@@ -16,11 +16,12 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import {
   getSporter,
-  updateSporterOnderdelen,
-  toggleFavoriet,
   deleteSporter,
-  ONDERDELEN_OPTIONS,
+  TOESTELLEN,
+  ONDERDELEN_PER_TOESTEL,
+  getMinimumForNiveau,
   type Sporter,
+  type Toestel,
 } from "@/lib/storage";
 
 export default function SporterScreen() {
@@ -46,31 +47,11 @@ export default function SporterScreen() {
     setLoading(false);
   };
 
-  const handleToggleOnderdeel = async (onderdeel: string) => {
-    if (!sporter) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    const current = sporter.onderdelen || [];
-    const updated = current.includes(onderdeel)
-      ? current.filter((o) => o !== onderdeel)
-      : [...current, onderdeel];
-
-    await updateSporterOnderdelen(sporter.id, updated);
-    setSporter({ ...sporter, onderdelen: updated });
-  };
-
-  const handleToggleFavoriet = async () => {
-    if (!sporter) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await toggleFavoriet(sporter.id);
-    setSporter({ ...sporter, favoriet: !sporter.favoriet });
-  };
-
   const handleDelete = () => {
     if (!sporter) return;
     Alert.alert(
       "Sporter verwijderen",
-      `Weet je zeker dat je ${sporter.naam} wilt verwijderen?`,
+      `Weet je zeker dat je ${sporter.naam} permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`,
       [
         { text: "Annuleren", style: "cancel" },
         {
@@ -106,24 +87,23 @@ export default function SporterScreen() {
     );
   }
 
-  const learnedCount = sporter.onderdelen.length;
-
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12} testID="back-btn">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
-        <View style={styles.headerActions}>
-          <Pressable onPress={handleToggleFavoriet} hitSlop={12}>
-            <Ionicons
-              name={sporter.favoriet ? "star" : "star-outline"}
-              size={24}
-              color={sporter.favoriet ? Colors.star : Colors.textSecondary}
-            />
-          </Pressable>
+
+        <View style={styles.headerRight}>
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerNaam} numberOfLines={1}>
+              {sporter.naam}
+            </Text>
+            <View style={styles.headerDivider} />
+            <Text style={styles.headerNiveau}>{sporter.niveau}</Text>
+          </View>
           <Pressable onPress={handleDelete} hitSlop={12} testID="delete-btn">
-            <Ionicons name="trash-outline" size={22} color={Colors.error} />
+            <Ionicons name="trash" size={20} color={Colors.error} />
           </Pressable>
         </View>
       </View>
@@ -135,72 +115,54 @@ export default function SporterScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.profileSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {sporter.naam
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .toUpperCase()
-                .slice(0, 2)}
-            </Text>
-          </View>
-          <Text style={styles.naam}>{sporter.naam}</Text>
-          <View style={styles.niveauBadge}>
-            <Text style={styles.niveauBadgeText}>{sporter.niveau}</Text>
-          </View>
-        </View>
+        {TOESTELLEN.map((toestel) => {
+          const selected = sporter.onderdelen[toestel]?.length || 0;
+          const minimum = getMinimumForNiveau(sporter.niveau, toestel as Toestel);
+          const progress = Math.min(selected / minimum, 1);
+          const isComplete = selected >= minimum;
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{learnedCount}</Text>
-            <Text style={styles.statLabel}>Geleerd</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>
-              {ONDERDELEN_OPTIONS.length - learnedCount}
-            </Text>
-            <Text style={styles.statLabel}>Te leren</Text>
-          </View>
-        </View>
+          return (
+            <Pressable
+              key={toestel}
+              style={({ pressed }) => [
+                styles.toestelItem,
+                pressed && styles.toestelItemPressed,
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push({
+                  pathname: "/toestel/[toestelId]",
+                  params: { toestelId: toestel, sporterId: sporter.id },
+                });
+              }}
+              testID={`toestel-${toestel}`}
+            >
+              <Text style={styles.toestelNaam}>{toestel}</Text>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Onderdelen</Text>
-          <Text style={styles.sectionSubtitle}>
-            Tik op een onderdeel om aan te vinken
-          </Text>
-
-          <View style={styles.onderdelenGrid}>
-            {ONDERDELEN_OPTIONS.map((onderdeel) => {
-              const isLearned = sporter.onderdelen.includes(onderdeel);
-              return (
-                <Pressable
-                  key={onderdeel}
-                  style={[
-                    styles.onderdeelChip,
-                    isLearned && styles.onderdeelChipLearned,
-                  ]}
-                  onPress={() => handleToggleOnderdeel(onderdeel)}
-                >
-                  <Ionicons
-                    name={isLearned ? "checkmark-circle" : "ellipse-outline"}
-                    size={18}
-                    color={isLearned ? Colors.primary : Colors.textTertiary}
-                  />
-                  <Text
+              <View style={styles.progressSection}>
+                <View style={styles.progressBarTrack}>
+                  <View
                     style={[
-                      styles.onderdeelText,
-                      isLearned && styles.onderdeelTextLearned,
+                      styles.progressBarFill,
+                      {
+                        width: `${progress * 100}%`,
+                        backgroundColor: isComplete ? Colors.success : Colors.primary,
+                      },
                     ]}
-                  >
-                    {onderdeel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+                  />
+                </View>
+                <Text style={styles.progressText}>
+                  {selected}/{minimum}
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={Colors.textTertiary}
+                />
+              </View>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -223,119 +185,83 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
-  headerActions: {
+  headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 14,
+    flexShrink: 1,
+  },
+  headerInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
+  },
+  headerNaam: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.text,
+    flexShrink: 1,
+  },
+  headerDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: Colors.border,
+    marginHorizontal: 10,
+  },
+  headerNiveau: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSecondary,
   },
   content: {
     paddingHorizontal: 20,
-  },
-  profileSection: {
-    alignItems: "center",
     paddingTop: 8,
-    paddingBottom: 24,
+    gap: 10,
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  avatarText: {
-    fontSize: 24,
-    fontFamily: "Inter_700Bold",
-    color: Colors.white,
-  },
-  naam: {
-    fontSize: 24,
-    fontFamily: "Inter_700Bold",
-    color: Colors.text,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  niveauBadge: {
-    backgroundColor: "#F0FDFA",
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#CCFBF1",
-  },
-  niveauBadgeText: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-    color: Colors.primaryDark,
-  },
-  statsRow: {
+  toestelItem: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 28,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-    borderRadius: 14,
-    padding: 16,
     alignItems: "center",
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  statValue: {
-    fontSize: 28,
-    fontFamily: "Inter_700Bold",
+  toestelItemPressed: {
+    backgroundColor: Colors.surfaceSecondary,
+    transform: [{ scale: 0.98 }],
+  },
+  toestelNaam: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
     color: Colors.text,
+    width: 80,
   },
-  statLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textTertiary,
-    marginBottom: 16,
-  },
-  onderdelenGrid: {
-    gap: 8,
-  },
-  onderdeelChip: {
+  progressSection: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
+    marginLeft: 8,
   },
-  onderdeelChipLearned: {
-    backgroundColor: "#F0FDFA",
-    borderColor: "#CCFBF1",
+  progressBarTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: 4,
+    overflow: "hidden",
   },
-  onderdeelText: {
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSecondary,
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 4,
   },
-  onderdeelTextLearned: {
+  progressText: {
+    fontSize: 13,
     fontFamily: "Inter_500Medium",
-    color: Colors.primaryDark,
+    color: Colors.textSecondary,
+    minWidth: 32,
+    textAlign: "right",
   },
   errorTitle: {
     fontSize: 18,

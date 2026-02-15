@@ -5,9 +5,11 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   Platform,
   Alert,
+  Modal,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,7 +19,9 @@ import Colors from "@/constants/colors";
 import {
   getSporter,
   deleteSporter,
+  updateSporterNiveau,
   TOESTELLEN,
+  NIVEAUS,
   getMinimumForNiveau,
   type Sporter,
   type Toestel,
@@ -28,6 +32,7 @@ export default function SporterScreen() {
   const insets = useSafeAreaInsets();
   const [sporter, setSporter] = useState<Sporter | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showNiveauPicker, setShowNiveauPicker] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -77,6 +82,16 @@ export default function SporterScreen() {
     }
   };
 
+  const handleNiveauChange = async (niveau: string) => {
+    if (!sporter) return;
+    Haptics.selectionAsync();
+    const updated = await updateSporterNiveau(sporter.id, niveau);
+    if (updated) {
+      setSporter(updated);
+    }
+    setShowNiveauPicker(false);
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top + webTopInset }]}>
@@ -110,7 +125,16 @@ export default function SporterScreen() {
               {sporter.naam}
             </Text>
             <View style={styles.headerDivider} />
-            <Text style={styles.headerNiveau}>{sporter.niveau}</Text>
+            <Pressable
+              onPress={() => setShowNiveauPicker(true)}
+              testID="niveau-edit-btn"
+              hitSlop={8}
+            >
+              <View style={styles.niveauTouchable}>
+                <Text style={styles.headerNiveau}>{sporter.niveau}</Text>
+                <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+              </View>
+            </Pressable>
           </View>
           <Pressable onPress={handleDelete} hitSlop={12} testID="delete-btn">
             <Ionicons name="trash" size={20} color={Colors.error} />
@@ -174,6 +198,62 @@ export default function SporterScreen() {
           );
         })}
       </ScrollView>
+
+      <Modal
+        visible={showNiveauPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNiveauPicker(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowNiveauPicker(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Niveau wijzigen</Text>
+              <Pressable
+                onPress={() => setShowNiveauPicker(false)}
+                hitSlop={12}
+              >
+                <Ionicons name="close" size={24} color={Colors.text} />
+              </Pressable>
+            </View>
+            <FlatList
+              data={NIVEAUS}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.niveauOption,
+                    item === sporter.niveau && styles.niveauOptionSelected,
+                    pressed && styles.niveauOptionPressed,
+                  ]}
+                  onPress={() => handleNiveauChange(item)}
+                  testID={`niveau-option-${item}`}
+                >
+                  <Text
+                    style={[
+                      styles.niveauOptionText,
+                      item === sporter.niveau && styles.niveauOptionTextSelected,
+                    ]}
+                  >
+                    {item}
+                  </Text>
+                  {item === sporter.niveau && (
+                    <Ionicons
+                      name="checkmark"
+                      size={20}
+                      color={Colors.primary}
+                    />
+                  )}
+                </Pressable>
+              )}
+              showsVerticalScrollIndicator={false}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -218,10 +298,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.border,
     marginHorizontal: 10,
   },
+  niveauTouchable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   headerNiveau: {
     fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSecondary,
+    fontFamily: "Inter_500Medium",
+    color: Colors.primary,
   },
   content: {
     paddingHorizontal: 20,
@@ -272,6 +357,57 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     minWidth: 32,
     textAlign: "right",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "60%",
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.text,
+  },
+  niveauOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  niveauOptionSelected: {
+    backgroundColor: "#F0FDFA",
+  },
+  niveauOptionPressed: {
+    backgroundColor: Colors.surfaceSecondary,
+  },
+  niveauOptionText: {
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+  },
+  niveauOptionTextSelected: {
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.primary,
   },
   errorTitle: {
     fontSize: 18,

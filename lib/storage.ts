@@ -228,6 +228,17 @@ export async function updateSporterOnderdelen(
   }
 }
 
+export async function updateSporterNiveau(id: string, niveau: string): Promise<Sporter | undefined> {
+  const sporters = await getSporters();
+  const index = sporters.findIndex((s) => s.id === id);
+  if (index !== -1) {
+    sporters[index].niveau = niveau;
+    await saveSporters(sporters);
+    return sporters[index];
+  }
+  return undefined;
+}
+
 export async function deleteSporter(id: string): Promise<void> {
   const sporters = await getSporters();
   const filtered = sporters.filter((s) => s.id !== id);

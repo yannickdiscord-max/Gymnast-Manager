@@ -46,24 +46,35 @@ export default function SporterScreen() {
     setLoading(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!sporter) return;
-    Alert.alert(
-      "Sporter verwijderen",
-      `Weet je zeker dat je ${sporter.naam} permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`,
-      [
-        { text: "Annuleren", style: "cancel" },
-        {
-          text: "Verwijderen",
-          style: "destructive",
-          onPress: async () => {
-            await deleteSporter(sporter.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            router.back();
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        `Weet je zeker dat je ${sporter.naam} permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`
+      );
+      if (confirmed) {
+        await deleteSporter(sporter.id);
+        router.back();
+      }
+    } else {
+      Alert.alert(
+        "Sporter verwijderen",
+        `Weet je zeker dat je ${sporter.naam} permanent wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`,
+        [
+          { text: "Annuleren", style: "cancel" },
+          {
+            text: "Verwijderen",
+            style: "destructive",
+            onPress: async () => {
+              await deleteSporter(sporter.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.back();
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   if (loading) {

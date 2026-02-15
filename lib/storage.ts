@@ -9,6 +9,14 @@ export interface Sporter {
   onderdelen: Record<string, string[]>;
 }
 
+export interface TurnOnderdeel {
+  naam: string;
+  niveau: TurnOnderdeelNiveau;
+}
+
+export const TURN_ONDERDEEL_NIVEAUS = ["tA", "A", "B", "C", "D", "E"] as const;
+export type TurnOnderdeelNiveau = (typeof TURN_ONDERDEEL_NIVEAUS)[number];
+
 const SPORTERS_KEY = "turnteam_sporters";
 
 export const TOESTELLEN = [
@@ -22,80 +30,80 @@ export const TOESTELLEN = [
 
 export type Toestel = (typeof TOESTELLEN)[number];
 
-export const ONDERDELEN_PER_TOESTEL: Record<Toestel, string[]> = {
+export const ONDERDELEN_PER_TOESTEL: Record<Toestel, TurnOnderdeel[]> = {
   Vloer: [
-    "Koprol voorwaarts",
-    "Koprol achterwaarts",
-    "Radslag",
-    "Overslag",
-    "Flikflak",
-    "Salto voorwaarts",
-    "Salto achterwaarts",
-    "Handstand",
-    "Rad",
-    "Rondat",
-    "Arabier",
-    "Schroef",
+    { naam: "Koprol voorwaarts", niveau: "tA" },
+    { naam: "Koprol achterwaarts", niveau: "tA" },
+    { naam: "Handstand", niveau: "tA" },
+    { naam: "Rad", niveau: "A" },
+    { naam: "Radslag", niveau: "A" },
+    { naam: "Rondat", niveau: "A" },
+    { naam: "Overslag", niveau: "B" },
+    { naam: "Flikflak", niveau: "B" },
+    { naam: "Arabier", niveau: "C" },
+    { naam: "Salto voorwaarts", niveau: "C" },
+    { naam: "Salto achterwaarts", niveau: "D" },
+    { naam: "Schroef", niveau: "E" },
   ],
   Voltige: [
-    "Opsprong",
-    "Afsprong",
-    "Hurksprong",
-    "Streeksprong",
-    "Gratssprong",
-    "Overslag",
-    "Yamashita",
-    "Tsukahara",
-    "Handspring",
-    "Salto voorwaarts",
+    { naam: "Opsprong", niveau: "tA" },
+    { naam: "Afsprong", niveau: "tA" },
+    { naam: "Hurksprong", niveau: "A" },
+    { naam: "Streeksprong", niveau: "A" },
+    { naam: "Gratssprong", niveau: "B" },
+    { naam: "Handspring", niveau: "B" },
+    { naam: "Overslag", niveau: "C" },
+    { naam: "Yamashita", niveau: "C" },
+    { naam: "Tsukahara", niveau: "D" },
+    { naam: "Salto voorwaarts", niveau: "E" },
   ],
   Ringen: [
-    "Hang",
-    "Steun",
-    "Schommel",
-    "Spierbal",
-    "Hoek",
-    "Kruis",
-    "Steunzwaaien",
-    "Kipstand",
-    "Hefwenteling",
-    "Afzwaai",
+    { naam: "Hang", niveau: "tA" },
+    { naam: "Steun", niveau: "tA" },
+    { naam: "Schommel", niveau: "A" },
+    { naam: "Hoek", niveau: "A" },
+    { naam: "Spierbal", niveau: "B" },
+    { naam: "Kipstand", niveau: "B" },
+    { naam: "Steunzwaaien", niveau: "C" },
+    { naam: "Kruis", niveau: "C" },
+    { naam: "Hefwenteling", niveau: "D" },
+    { naam: "Afzwaai", niveau: "E" },
   ],
   Sprong: [
-    "Hurksprong",
-    "Streeksprong",
-    "Gratssprong",
-    "Handspring",
-    "Overslag",
-    "Yamashita",
-    "Tsukahara",
-    "Salto voorwaarts",
-    "Schroefsprong",
-    "Rondat afsprong",
+    { naam: "Hurksprong", niveau: "tA" },
+    { naam: "Streeksprong", niveau: "tA" },
+    { naam: "Gratssprong", niveau: "A" },
+    { naam: "Handspring", niveau: "A" },
+    { naam: "Overslag", niveau: "B" },
+    { naam: "Yamashita", niveau: "B" },
+    { naam: "Tsukahara", niveau: "C" },
+    { naam: "Salto voorwaarts", niveau: "C" },
+    { naam: "Schroefsprong", niveau: "D" },
+    { naam: "Rondat afsprong", niveau: "E" },
   ],
   Brug: [
-    "Steunzwaaien",
-    "Wende",
-    "Kehre",
-    "Draai",
-    "Felg",
-    "Kiep",
-    "Kip",
-    "Hefwenteling",
-    "Diamidov",
-    "Afzwaai",
+    { naam: "Steunzwaaien", niveau: "tA" },
+    { naam: "Wende", niveau: "tA" },
+    { naam: "Kehre", niveau: "A" },
+    { naam: "Draai", niveau: "A" },
+    { naam: "Kiep", niveau: "B" },
+    { naam: "Kip", niveau: "B" },
+    { naam: "Felg", niveau: "C" },
+    { naam: "Hefwenteling", niveau: "C" },
+    { naam: "Diamidov", niveau: "D" },
+    { naam: "Afzwaai", niveau: "E" },
   ],
   Rekstok: [
-    "Zweefhang",
-    "Kiep",
-    "Felg",
-    "Reuzendraaien",
-    "Steunzwaaien",
-    "Staldergrep",
-    "Adlerslag",
-    "Tkatchev",
-    "Afsprong salto",
-    "Afsprong schroef",
+    { naam: "Zweefhang", niveau: "tA" },
+    { naam: "Steunzwaaien", niveau: "tA" },
+    { naam: "Kiep", niveau: "A" },
+    { naam: "Felg", niveau: "A" },
+    { naam: "Reuzendraaien", niveau: "B" },
+    { naam: "Staldergrep", niveau: "C" },
+    { naam: "Adlerslag", niveau: "C" },
+    { naam: "Tkatchev", niveau: "D" },
+    { naam: "Afsprong salto", niveau: "D" },
+    { naam: "Afsprong schroef", niveau: "E" },
   ],
 };
 
@@ -114,6 +122,35 @@ export function getMinimumForNiveau(niveau: string, toestel: Toestel): number {
   const totalOnderdelen = ONDERDELEN_PER_TOESTEL[toestel].length;
   const niveauMin = NIVEAU_MINIMUM[niveau] || 2;
   return Math.min(niveauMin, totalOnderdelen);
+}
+
+function sortOnderdelen(onderdelen: TurnOnderdeel[]): TurnOnderdeel[] {
+  const niveauOrder: Record<string, number> = {
+    tA: 0,
+    A: 1,
+    B: 2,
+    C: 3,
+    D: 4,
+    E: 5,
+  };
+  return [...onderdelen].sort((a, b) => {
+    const niveauDiff = (niveauOrder[a.niveau] ?? 99) - (niveauOrder[b.niveau] ?? 99);
+    if (niveauDiff !== 0) return niveauDiff;
+    return a.naam.localeCompare(b.naam);
+  });
+}
+
+export function getSortedOnderdelen(toestel: Toestel): TurnOnderdeel[] {
+  return sortOnderdelen(ONDERDELEN_PER_TOESTEL[toestel] || []);
+}
+
+export function getOnderdelenForNiveau(
+  toestel: Toestel,
+  filterNiveau: TurnOnderdeelNiveau
+): TurnOnderdeel[] {
+  const all = ONDERDELEN_PER_TOESTEL[toestel] || [];
+  const filtered = all.filter((o) => o.niveau === filterNiveau);
+  return filtered.sort((a, b) => a.naam.localeCompare(b.naam));
 }
 
 export async function getSporters(): Promise<Sporter[]> {

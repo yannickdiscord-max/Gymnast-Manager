@@ -18,7 +18,6 @@ import {
   getSporter,
   deleteSporter,
   TOESTELLEN,
-  ONDERDELEN_PER_TOESTEL,
   getMinimumForNiveau,
   type Sporter,
   type Toestel,

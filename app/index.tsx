@@ -13,7 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
-import { getSporters, toggleFavoriet, type Sporter } from "@/lib/storage";
+import { getSporters, toggleFavoriet, NIVEAUS, type Sporter } from "@/lib/storage";
 
 type FilterMode = "favorieten" | "alle";
 
@@ -45,10 +45,16 @@ export default function HomeScreen() {
     setSporters(updated);
   };
 
-  const filtered =
-    filter === "favorieten"
-      ? sporters.filter((s) => s.favoriet)
-      : sporters;
+  const sortSporters = (list: Sporter[]) =>
+    [...list].sort((a, b) => {
+      const niveauDiff = NIVEAUS.indexOf(a.niveau) - NIVEAUS.indexOf(b.niveau);
+      if (niveauDiff !== 0) return niveauDiff;
+      return a.naam.localeCompare(b.naam);
+    });
+
+  const filtered = sortSporters(
+    filter === "favorieten" ? sporters.filter((s) => s.favoriet) : sporters
+  );
 
   const renderSporter = ({ item }: { item: Sporter }) => (
     <Pressable

@@ -217,6 +217,50 @@ export default function SporterScreen() {
             </Pressable>
           );
         })}
+
+        {(() => {
+          const rows = TOESTELLEN.map((toestel) => {
+            const selectedNamen = sporter.onderdelen[toestel] || [];
+            const allOnderdelen = onderdelenMap[toestel] || [];
+            return {
+              toestel,
+              dWaarde: calculateDWaarde(selectedNamen, allOnderdelen),
+            };
+          });
+          const total = rows.reduce((sum, r) => sum + r.dWaarde, 0);
+
+          return (
+            <View style={styles.summaryCard} testID="dwaarde-summary">
+              <Text style={styles.summaryTitle}>D-Waarde overzicht</Text>
+              {rows.map(({ toestel, dWaarde }, idx) => (
+                <View
+                  key={toestel}
+                  style={[
+                    styles.summaryRow,
+                    idx < rows.length - 1 && styles.summaryRowBorder,
+                  ]}
+                >
+                  <Text style={styles.summaryToestel}>{toestel}</Text>
+                  <View style={styles.summaryDots} />
+                  <Text
+                    style={[
+                      styles.summaryValue,
+                      dWaarde > 0 && styles.summaryValueActive,
+                    ]}
+                  >
+                    {dWaarde.toFixed(1)}
+                  </Text>
+                </View>
+              ))}
+              <View style={styles.summaryTotalDivider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryTotalLabel}>Totaal</Text>
+                <View style={styles.summaryDots} />
+                <Text style={styles.summaryTotalValue}>{total.toFixed(1)}</Text>
+              </View>
+            </View>
+          );
+        })()}
       </ScrollView>
 
       <Modal
@@ -436,6 +480,75 @@ const styles = StyleSheet.create({
   niveauOptionTextSelected: {
     fontFamily: "Inter_600SemiBold",
     color: Colors.primary,
+  },
+  summaryCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+    marginTop: 4,
+  },
+  summaryTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.textTertiary,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 12,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  summaryRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  summaryToestel: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    color: Colors.textSecondary,
+    width: 72,
+  },
+  summaryDots: {
+    flex: 1,
+    height: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    borderStyle: "dotted",
+    marginHorizontal: 8,
+  },
+  summaryValue: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.textTertiary,
+    minWidth: 32,
+    textAlign: "right",
+  },
+  summaryValueActive: {
+    color: Colors.text,
+  },
+  summaryTotalDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginTop: 4,
+  },
+  summaryTotalLabel: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    width: 72,
+  },
+  summaryTotalValue: {
+    fontSize: 15,
+    fontFamily: "Inter_700Bold",
+    color: Colors.primary,
+    minWidth: 32,
+    textAlign: "right",
   },
   errorTitle: {
     fontSize: 18,

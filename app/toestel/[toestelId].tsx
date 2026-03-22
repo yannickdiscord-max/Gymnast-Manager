@@ -148,18 +148,22 @@ export default function ToestelScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const standardOnderdelen = activeFilter
-    ? getOnderdelenForNiveau(toestel, activeFilter)
-    : getSortedOnderdelen(toestel);
+  const niveauOrder: Record<string, number> = {
+    tA: 0, A: 1, B: 2, C: 3, D: 4, E: 5,
+  };
 
-  const filteredCustom = activeFilter
-    ? customOnderdelen.filter((o) => o.niveau === activeFilter)
-    : customOnderdelen;
+  const allOnderdelen = [
+    ...getSortedOnderdelen(toestel),
+    ...customOnderdelen,
+  ].sort((a, b) => {
+    const diff = (niveauOrder[a.niveau] ?? 99) - (niveauOrder[b.niveau] ?? 99);
+    if (diff !== 0) return diff;
+    return a.naam.localeCompare(b.naam);
+  });
 
-  const displayOnderdelen: TurnOnderdeel[] = [
-    ...standardOnderdelen,
-    ...filteredCustom,
-  ];
+  const displayOnderdelen: TurnOnderdeel[] = activeFilter
+    ? allOnderdelen.filter((o) => o.niveau === activeFilter)
+    : allOnderdelen;
 
   if (loading) {
     return (

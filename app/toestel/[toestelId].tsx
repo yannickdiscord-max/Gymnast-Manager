@@ -20,11 +20,9 @@ import Colors from "@/constants/colors";
 import {
   getSporter,
   updateSporterOnderdelen,
-  getSortedOnderdelen,
-  getOnderdelenForNiveau,
-  getCustomOnderdelen,
-  addCustomOnderdeel,
-  deleteCustomOnderdeel,
+  getOnderdelen,
+  addOnderdeel,
+  deleteOnderdeel,
   TURN_ONDERDEEL_NIVEAUS,
   type Sporter,
   type Toestel,
@@ -39,9 +37,9 @@ export default function ToestelScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const [sporter, setSporter] = useState<Sporter | null>(null);
+  const [onderdelen, setOnderdelen] = useState<TurnOnderdeel[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TurnOnderdeelNiveau | null>(null);
-  const [customOnderdelen, setCustomOnderdelen] = useState<TurnOnderdeel[]>([]);
 
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newNaam, setNewNaam] = useState("");
@@ -63,23 +61,23 @@ export default function ToestelScreen() {
   const loadData = async () => {
     if (!sporterId) return;
     setLoading(true);
-    const [data, custom] = await Promise.all([
+    const [sporterData, onderdelenData] = await Promise.all([
       getSporter(sporterId),
-      getCustomOnderdelen(toestel),
+      getOnderdelen(toestel),
     ]);
-    setSporter(data || null);
-    setCustomOnderdelen(custom);
+    setSporter(sporterData || null);
+    setOnderdelen(onderdelenData);
     setLoading(false);
   };
 
-  const handleToggleOnderdeel = async (onderdeelNaam: string) => {
+  const handleToggleOnderdeel = async (naam: string) => {
     if (!sporter) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const current = sporter.onderdelen[toestel] || [];
-    const updated = current.includes(onderdeelNaam)
-      ? current.filter((o) => o !== onderdeelNaam)
-      : [...current, onderdeelNaam];
+    const updated = current.includes(naam)
+      ? current.filter((o) => o !== naam)
+      : [...current, naam];
 
     await updateSporterOnderdelen(sporter.id, toestel, updated);
     setSporter({
@@ -100,18 +98,14 @@ export default function ToestelScreen() {
     setAddModalVisible(true);
   };
 
-  const handleSaveCustom = async () => {
+  const handleSave = async () => {
     const trimmed = newNaam.trim();
     if (!trimmed) {
       setErrorMsg("Vul een naam in");
       return;
     }
 
-    const allOnderdelen = [
-      ...getSortedOnderdelen(toestel),
-      ...customOnderdelen,
-    ];
-    const duplicate = allOnderdelen.some(
+    const duplicate = onderdelen.some(
       (o) => o.naam.toLowerCase() === trimmed.toLowerCase()
     );
     if (duplicate) {
@@ -120,19 +114,18 @@ export default function ToestelScreen() {
     }
 
     setSaving(true);
-    const onderdeel: TurnOnderdeel = { naam: trimmed, niveau: newNiveau };
-    await addCustomOnderdeel(toestel, onderdeel);
-    const updated = await getCustomOnderdelen(toestel);
-    setCustomOnderdelen(updated);
+    await addOnderdeel(toestel, { naam: trimmed, niveau: newNiveau });
+    const updated = await getOnderdelen(toestel);
+    setOnderdelen(updated);
     setSaving(false);
     setAddModalVisible(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  const handleDeleteCustom = async (naam: string) => {
-    await deleteCustomOnderdeel(toestel, naam);
-    const updated = await getCustomOnderdelen(toestel);
-    setCustomOnderdelen(updated);
+  const handleDelete = async (naam: string) => {
+    await deleteOnderdeel(toestel, naam);
+    const updated = await getOnderdelen(toestel);
+    setOnderdelen(updated);
 
     if (sporter) {
       const current = sporter.onderdelen[toestel] || [];
@@ -148,22 +141,9 @@ export default function ToestelScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const niveauOrder: Record<string, number> = {
-    tA: 0, A: 1, B: 2, C: 3, D: 4, E: 5,
-  };
-
-  const allOnderdelen = [
-    ...getSortedOnderdelen(toestel),
-    ...customOnderdelen,
-  ].sort((a, b) => {
-    const diff = (niveauOrder[a.niveau] ?? 99) - (niveauOrder[b.niveau] ?? 99);
-    if (diff !== 0) return diff;
-    return a.naam.localeCompare(b.naam);
-  });
-
-  const displayOnderdelen: TurnOnderdeel[] = activeFilter
-    ? allOnderdelen.filter((o) => o.niveau === activeFilter)
-    : allOnderdelen;
+  const displayOnderdelen = activeFilter
+    ? onderdelen.filter((o) => o.niveau === activeFilter)
+    : onderdelen;
 
   if (loading) {
     return (
@@ -189,13 +169,9 @@ export default function ToestelScreen() {
 
   const renderOnderdeel = ({ item }: { item: TurnOnderdeel }) => {
     const isSelected = selected.includes(item.naam);
-    const isCustom = customOnderdelen.some((o) => o.naam === item.naam);
     return (
       <Pressable
-        style={[
-          styles.onderdeelItem,
-          isSelected && styles.onderdeelItemSelected,
-        ]}
+        style={[styles.onderdeelItem, isSelected && styles.onderdeelItemSelected]}
         onPress={() => handleToggleOnderdeel(item.naam)}
         testID={`onderdeel-${item.naam}`}
       >
@@ -205,12 +181,7 @@ export default function ToestelScreen() {
           color={isSelected ? Colors.primary : Colors.textTertiary}
         />
         <View style={styles.onderdeelInfo}>
-          <Text
-            style={[
-              styles.onderdeelText,
-              isSelected && styles.onderdeelTextSelected,
-            ]}
-          >
+          <Text style={[styles.onderdeelText, isSelected && styles.onderdeelTextSelected]}>
             {item.naam}
           </Text>
         </View>
@@ -219,29 +190,16 @@ export default function ToestelScreen() {
             {item.niveau}
           </Text>
         </View>
-        {isCustom && (
-          <Pressable
-            onPress={() => handleDeleteCustom(item.naam)}
-            hitSlop={8}
-            testID={`delete-custom-${item.naam}`}
-          >
-            <Ionicons name="trash-outline" size={18} color={Colors.textTertiary} />
-          </Pressable>
-        )}
+        <Pressable
+          onPress={() => handleDelete(item.naam)}
+          hitSlop={8}
+          testID={`delete-${item.naam}`}
+        >
+          <Ionicons name="trash-outline" size={18} color={Colors.textTertiary} />
+        </Pressable>
       </Pressable>
     );
   };
-
-  const ListFooter = () => (
-    <Pressable
-      style={styles.addButton}
-      onPress={handleOpenAddModal}
-      testID="add-onderdeel-btn"
-    >
-      <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-      <Text style={styles.addButtonText}>Onderdeel toevoegen</Text>
-    </Pressable>
-  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -264,19 +222,11 @@ export default function ToestelScreen() {
           return (
             <Pressable
               key={niveau}
-              style={[
-                styles.filterChip,
-                isActive && styles.filterChipActive,
-              ]}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
               onPress={() => handleFilterPress(niveau)}
               testID={`filter-${niveau}`}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  isActive && styles.filterChipTextActive,
-                ]}
-              >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
                 {niveau}
               </Text>
             </Pressable>
@@ -304,7 +254,16 @@ export default function ToestelScreen() {
             </View>
           ) : null
         }
-        ListFooterComponent={<ListFooter />}
+        ListFooterComponent={
+          <Pressable
+            style={styles.addButton}
+            onPress={handleOpenAddModal}
+            testID="add-onderdeel-btn"
+          >
+            <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
+            <Text style={styles.addButtonText}>Onderdeel toevoegen</Text>
+          </Pressable>
+        }
       />
 
       <Modal
@@ -317,16 +276,8 @@ export default function ToestelScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <Pressable
-            style={styles.modalBackdrop}
-            onPress={() => setAddModalVisible(false)}
-          />
-          <View
-            style={[
-              styles.modalSheet,
-              { paddingBottom: insets.bottom + webBottomInset + 16 },
-            ]}
-          >
+          <Pressable style={styles.modalBackdrop} onPress={() => setAddModalVisible(false)} />
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Onderdeel toevoegen</Text>
 
@@ -334,37 +285,24 @@ export default function ToestelScreen() {
             <TextInput
               style={styles.textInput}
               value={newNaam}
-              onChangeText={(t) => {
-                setNewNaam(t);
-                setErrorMsg("");
-              }}
+              onChangeText={(t) => { setNewNaam(t); setErrorMsg(""); }}
               placeholder="bijv. Salto gestrekt"
               placeholderTextColor={Colors.textTertiary}
               autoFocus
               testID="custom-naam-input"
             />
-            {!!errorMsg && (
-              <Text style={styles.errorText}>{errorMsg}</Text>
-            )}
+            {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
 
             <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Niveau</Text>
             <View style={styles.niveauRow}>
               {TURN_ONDERDEEL_NIVEAUS.map((n) => (
                 <Pressable
                   key={n}
-                  style={[
-                    styles.niveauOption,
-                    newNiveau === n && styles.niveauOptionActive,
-                  ]}
+                  style={[styles.niveauOption, newNiveau === n && styles.niveauOptionActive]}
                   onPress={() => setNewNiveau(n)}
                   testID={`select-niveau-${n}`}
                 >
-                  <Text
-                    style={[
-                      styles.niveauOptionText,
-                      newNiveau === n && styles.niveauOptionTextActive,
-                    ]}
-                  >
+                  <Text style={[styles.niveauOptionText, newNiveau === n && styles.niveauOptionTextActive]}>
                     {n}
                   </Text>
                 </Pressable>
@@ -381,7 +319,7 @@ export default function ToestelScreen() {
               </Pressable>
               <Pressable
                 style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-                onPress={handleSaveCustom}
+                onPress={handleSave}
                 disabled={saving}
                 testID="save-add-btn"
               >
@@ -424,15 +362,8 @@ function getNiveauTagTextStyle(niveau: TurnOnderdeelNiveau) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  center: {
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-  },
+  container: { flex: 1, backgroundColor: Colors.background },
+  center: { justifyContent: "center", alignItems: "center", gap: 12 },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -440,19 +371,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.text,
-  },
-  filterScroll: {
-    flexGrow: 0,
-    marginBottom: 12,
-  },
-  filterRow: {
-    paddingHorizontal: 20,
-    gap: 8,
-  },
+  headerTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text },
+  filterScroll: { flexGrow: 0, marginBottom: 12 },
+  filterRow: { paddingHorizontal: 20, gap: 8 },
   filterChip: {
     paddingHorizontal: 18,
     paddingVertical: 10,
@@ -461,23 +382,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.textSecondary,
-  },
-  filterChipTextActive: {
-    color: Colors.white,
-  },
-  listContent: {
-    paddingHorizontal: 20,
-    gap: 8,
-    paddingTop: 4,
-  },
+  filterChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  filterChipText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: Colors.textSecondary },
+  filterChipTextActive: { color: Colors.white },
+  listContent: { paddingHorizontal: 20, gap: 8, paddingTop: 4 },
   onderdeelItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -489,53 +397,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  onderdeelItemSelected: {
-    backgroundColor: "#F0FDFA",
-    borderColor: "#CCFBF1",
-  },
-  onderdeelInfo: {
-    flex: 1,
-  },
-  onderdeelText: {
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSecondary,
-  },
-  onderdeelTextSelected: {
-    fontFamily: "Inter_500Medium",
-    color: Colors.primaryDark,
-  },
-  niveauTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  niveauTagText: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingTop: 60,
-    gap: 8,
-  },
-  emptyText: {
-    fontSize: 15,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textTertiary,
-    textAlign: "center",
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.textSecondary,
-  },
-  backLink: {
-    fontSize: 16,
-    fontFamily: "Inter_500Medium",
-    color: Colors.primary,
-  },
+  onderdeelItemSelected: { backgroundColor: "#F0FDFA", borderColor: "#CCFBF1" },
+  onderdeelInfo: { flex: 1 },
+  onderdeelText: { fontSize: 15, fontFamily: "Inter_400Regular", color: Colors.textSecondary },
+  onderdeelTextSelected: { fontFamily: "Inter_500Medium", color: Colors.primaryDark },
+  niveauTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+  niveauTagText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  emptyContainer: { alignItems: "center", paddingTop: 60, gap: 8 },
+  emptyText: { fontSize: 15, fontFamily: "Inter_400Regular", color: Colors.textTertiary, textAlign: "center" },
+  errorTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.textSecondary },
+  backLink: { fontSize: 16, fontFamily: "Inter_500Medium", color: Colors.primary },
   addButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -548,19 +419,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
     borderStyle: "dashed",
   },
-  addButtonText: {
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
-    color: Colors.primary,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
+  addButtonText: { fontSize: 15, fontFamily: "Inter_500Medium", color: Colors.primary },
+  modalOverlay: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
   modalSheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
@@ -576,18 +437,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 20,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.text,
-    marginBottom: 20,
-  },
-  fieldLabel: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-    color: Colors.textSecondary,
-    marginBottom: 8,
-  },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text, marginBottom: 20 },
+  fieldLabel: { fontSize: 13, fontFamily: "Inter_500Medium", color: Colors.textSecondary, marginBottom: 8 },
   textInput: {
     backgroundColor: Colors.surfaceSecondary,
     borderRadius: 12,
@@ -599,17 +450,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  errorText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: "#DC2626",
-    marginTop: 6,
-  },
-  niveauRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
+  errorText: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#DC2626", marginTop: 6 },
+  niveauRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   niveauOption: {
     paddingHorizontal: 18,
     paddingVertical: 10,
@@ -618,23 +460,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  niveauOptionActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  niveauOptionText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.textSecondary,
-  },
-  niveauOptionTextActive: {
-    color: Colors.white,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 24,
-  },
+  niveauOptionActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  niveauOptionText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: Colors.textSecondary },
+  niveauOptionTextActive: { color: Colors.white },
+  modalActions: { flexDirection: "row", gap: 12, marginTop: 24 },
   cancelBtn: {
     flex: 1,
     paddingVertical: 14,
@@ -642,21 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceSecondary,
     alignItems: "center",
   },
-  cancelBtnText: {
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
-    color: Colors.textSecondary,
-  },
-  saveBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-    alignItems: "center",
-  },
-  saveBtnText: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.white,
-  },
+  cancelBtnText: { fontSize: 15, fontFamily: "Inter_500Medium", color: Colors.textSecondary },
+  saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center" },
+  saveBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: Colors.white },
 });

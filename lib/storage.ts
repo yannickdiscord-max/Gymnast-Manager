@@ -124,33 +124,52 @@ export function getMinimumForNiveau(niveau: string, toestel: Toestel): number {
   return Math.min(niveauMin, totalOnderdelen);
 }
 
+const ONDERDELEN_KEY = "turnteam_onderdelen";
+
+const NIVEAU_ORDER: Record<string, number> = {
+  tA: 0, A: 1, B: 2, C: 3, D: 4, E: 5,
+};
+
 function sortOnderdelen(onderdelen: TurnOnderdeel[]): TurnOnderdeel[] {
-  const niveauOrder: Record<string, number> = {
-    tA: 0,
-    A: 1,
-    B: 2,
-    C: 3,
-    D: 4,
-    E: 5,
-  };
   return [...onderdelen].sort((a, b) => {
-    const niveauDiff = (niveauOrder[a.niveau] ?? 99) - (niveauOrder[b.niveau] ?? 99);
-    if (niveauDiff !== 0) return niveauDiff;
+    const diff = (NIVEAU_ORDER[a.niveau] ?? 99) - (NIVEAU_ORDER[b.niveau] ?? 99);
+    if (diff !== 0) return diff;
     return a.naam.localeCompare(b.naam);
   });
 }
 
-export function getSortedOnderdelen(toestel: Toestel): TurnOnderdeel[] {
-  return sortOnderdelen(ONDERDELEN_PER_TOESTEL[toestel] || []);
+export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> {
+  const data = await AsyncStorage.getItem(ONDERDELEN_KEY);
+  const parsed: Record<string, TurnOnderdeel[]> = data ? JSON.parse(data) : {};
+  if (!parsed[toestel]) {
+    parsed[toestel] = [...ONDERDELEN_PER_TOESTEL[toestel]];
+    await AsyncStorage.setItem(ONDERDELEN_KEY, JSON.stringify(parsed));
+  }
+  return sortOnderdelen(parsed[toestel]);
 }
 
-export function getOnderdelenForNiveau(
+export async function addOnderdeel(
   toestel: Toestel,
-  filterNiveau: TurnOnderdeelNiveau
-): TurnOnderdeel[] {
-  const all = ONDERDELEN_PER_TOESTEL[toestel] || [];
-  const filtered = all.filter((o) => o.niveau === filterNiveau);
-  return filtered.sort((a, b) => a.naam.localeCompare(b.naam));
+  onderdeel: TurnOnderdeel
+): Promise<void> {
+  const data = await AsyncStorage.getItem(ONDERDELEN_KEY);
+  const parsed: Record<string, TurnOnderdeel[]> = data ? JSON.parse(data) : {};
+  const existing = parsed[toestel] ?? [...ONDERDELEN_PER_TOESTEL[toestel]];
+  if (!existing.some((o) => o.naam === onderdeel.naam)) {
+    parsed[toestel] = [...existing, onderdeel];
+    await AsyncStorage.setItem(ONDERDELEN_KEY, JSON.stringify(parsed));
+  }
+}
+
+export async function deleteOnderdeel(
+  toestel: Toestel,
+  naam: string
+): Promise<void> {
+  const data = await AsyncStorage.getItem(ONDERDELEN_KEY);
+  if (!data) return;
+  const parsed: Record<string, TurnOnderdeel[]> = JSON.parse(data);
+  parsed[toestel] = (parsed[toestel] ?? []).filter((o) => o.naam !== naam);
+  await AsyncStorage.setItem(ONDERDELEN_KEY, JSON.stringify(parsed));
 }
 
 export async function getSporters(): Promise<Sporter[]> {
@@ -256,38 +275,3 @@ export const NIVEAUS = [
   "Selectie",
 ];
 
-const CUSTOM_ONDERDELEN_KEY = "turnteam_custom_onderdelen";
-
-export async function getCustomOnderdelen(
-  toestel: Toestel
-): Promise<TurnOnderdeel[]> {
-  const data = await AsyncStorage.getItem(CUSTOM_ONDERDELEN_KEY);
-  if (!data) return [];
-  const parsed: Record<string, TurnOnderdeel[]> = JSON.parse(data);
-  return parsed[toestel] || [];
-}
-
-export async function addCustomOnderdeel(
-  toestel: Toestel,
-  onderdeel: TurnOnderdeel
-): Promise<void> {
-  const data = await AsyncStorage.getItem(CUSTOM_ONDERDELEN_KEY);
-  const parsed: Record<string, TurnOnderdeel[]> = data ? JSON.parse(data) : {};
-  const existing = parsed[toestel] || [];
-  const alreadyExists = existing.some((o) => o.naam === onderdeel.naam);
-  if (!alreadyExists) {
-    parsed[toestel] = [...existing, onderdeel];
-    await AsyncStorage.setItem(CUSTOM_ONDERDELEN_KEY, JSON.stringify(parsed));
-  }
-}
-
-export async function deleteCustomOnderdeel(
-  toestel: Toestel,
-  naam: string
-): Promise<void> {
-  const data = await AsyncStorage.getItem(CUSTOM_ONDERDELEN_KEY);
-  if (!data) return;
-  const parsed: Record<string, TurnOnderdeel[]> = JSON.parse(data);
-  parsed[toestel] = (parsed[toestel] || []).filter((o) => o.naam !== naam);
-  await AsyncStorage.setItem(CUSTOM_ONDERDELEN_KEY, JSON.stringify(parsed));
-}

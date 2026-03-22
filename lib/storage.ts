@@ -255,3 +255,39 @@ export const NIVEAUS = [
   "Senior",
   "Selectie",
 ];
+
+const CUSTOM_ONDERDELEN_KEY = "turnteam_custom_onderdelen";
+
+export async function getCustomOnderdelen(
+  toestel: Toestel
+): Promise<TurnOnderdeel[]> {
+  const data = await AsyncStorage.getItem(CUSTOM_ONDERDELEN_KEY);
+  if (!data) return [];
+  const parsed: Record<string, TurnOnderdeel[]> = JSON.parse(data);
+  return parsed[toestel] || [];
+}
+
+export async function addCustomOnderdeel(
+  toestel: Toestel,
+  onderdeel: TurnOnderdeel
+): Promise<void> {
+  const data = await AsyncStorage.getItem(CUSTOM_ONDERDELEN_KEY);
+  const parsed: Record<string, TurnOnderdeel[]> = data ? JSON.parse(data) : {};
+  const existing = parsed[toestel] || [];
+  const alreadyExists = existing.some((o) => o.naam === onderdeel.naam);
+  if (!alreadyExists) {
+    parsed[toestel] = [...existing, onderdeel];
+    await AsyncStorage.setItem(CUSTOM_ONDERDELEN_KEY, JSON.stringify(parsed));
+  }
+}
+
+export async function deleteCustomOnderdeel(
+  toestel: Toestel,
+  naam: string
+): Promise<void> {
+  const data = await AsyncStorage.getItem(CUSTOM_ONDERDELEN_KEY);
+  if (!data) return;
+  const parsed: Record<string, TurnOnderdeel[]> = JSON.parse(data);
+  parsed[toestel] = (parsed[toestel] || []).filter((o) => o.naam !== naam);
+  await AsyncStorage.setItem(CUSTOM_ONDERDELEN_KEY, JSON.stringify(parsed));
+}

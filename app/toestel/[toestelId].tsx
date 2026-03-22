@@ -8,6 +8,9 @@ import {
   FlatList,
   ActivityIndicator,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,6 +22,9 @@ import {
   updateSporterOnderdelen,
   getSortedOnderdelen,
   getOnderdelenForNiveau,
+  getCustomOnderdelen,
+  addCustomOnderdeel,
+  deleteCustomOnderdeel,
   TURN_ONDERDEEL_NIVEAUS,
   type Sporter,
   type Toestel,
@@ -35,6 +41,13 @@ export default function ToestelScreen() {
   const [sporter, setSporter] = useState<Sporter | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TurnOnderdeelNiveau | null>(null);
+  const [customOnderdelen, setCustomOnderdelen] = useState<TurnOnderdeel[]>([]);
+
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [newNaam, setNewNaam] = useState("");
+  const [newNiveau, setNewNiveau] = useState<TurnOnderdeelNiveau>("A");
+  const [saving, setSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -43,15 +56,19 @@ export default function ToestelScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadSporter();
-    }, [sporterId])
+      loadData();
+    }, [sporterId, toestelId])
   );
 
-  const loadSporter = async () => {
+  const loadData = async () => {
     if (!sporterId) return;
     setLoading(true);
-    const data = await getSporter(sporterId);
+    const [data, custom] = await Promise.all([
+      getSporter(sporterId),
+      getCustomOnderdelen(toestel),
+    ]);
     setSporter(data || null);
+    setCustomOnderdelen(custom);
     setLoading(false);
   };
 
@@ -76,9 +93,73 @@ export default function ToestelScreen() {
     setActiveFilter((prev) => (prev === niveau ? null : niveau));
   };
 
-  const displayOnderdelen: TurnOnderdeel[] = activeFilter
+  const handleOpenAddModal = () => {
+    setNewNaam("");
+    setNewNiveau("A");
+    setErrorMsg("");
+    setAddModalVisible(true);
+  };
+
+  const handleSaveCustom = async () => {
+    const trimmed = newNaam.trim();
+    if (!trimmed) {
+      setErrorMsg("Vul een naam in");
+      return;
+    }
+
+    const allOnderdelen = [
+      ...getSortedOnderdelen(toestel),
+      ...customOnderdelen,
+    ];
+    const duplicate = allOnderdelen.some(
+      (o) => o.naam.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (duplicate) {
+      setErrorMsg("Dit onderdeel bestaat al");
+      return;
+    }
+
+    setSaving(true);
+    const onderdeel: TurnOnderdeel = { naam: trimmed, niveau: newNiveau };
+    await addCustomOnderdeel(toestel, onderdeel);
+    const updated = await getCustomOnderdelen(toestel);
+    setCustomOnderdelen(updated);
+    setSaving(false);
+    setAddModalVisible(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleDeleteCustom = async (naam: string) => {
+    await deleteCustomOnderdeel(toestel, naam);
+    const updated = await getCustomOnderdelen(toestel);
+    setCustomOnderdelen(updated);
+
+    if (sporter) {
+      const current = sporter.onderdelen[toestel] || [];
+      if (current.includes(naam)) {
+        const filtered = current.filter((o) => o !== naam);
+        await updateSporterOnderdelen(sporter.id, toestel, filtered);
+        setSporter({
+          ...sporter,
+          onderdelen: { ...sporter.onderdelen, [toestel]: filtered },
+        });
+      }
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const standardOnderdelen = activeFilter
     ? getOnderdelenForNiveau(toestel, activeFilter)
     : getSortedOnderdelen(toestel);
+
+  const filteredCustom = activeFilter
+    ? customOnderdelen.filter((o) => o.niveau === activeFilter)
+    : customOnderdelen;
+
+  const displayOnderdelen: TurnOnderdeel[] = [
+    ...standardOnderdelen,
+    ...filteredCustom,
+  ];
 
   if (loading) {
     return (
@@ -104,6 +185,7 @@ export default function ToestelScreen() {
 
   const renderOnderdeel = ({ item }: { item: TurnOnderdeel }) => {
     const isSelected = selected.includes(item.naam);
+    const isCustom = customOnderdelen.some((o) => o.naam === item.naam);
     return (
       <Pressable
         style={[
@@ -133,9 +215,29 @@ export default function ToestelScreen() {
             {item.niveau}
           </Text>
         </View>
+        {isCustom && (
+          <Pressable
+            onPress={() => handleDeleteCustom(item.naam)}
+            hitSlop={8}
+            testID={`delete-custom-${item.naam}`}
+          >
+            <Ionicons name="trash-outline" size={18} color={Colors.textTertiary} />
+          </Pressable>
+        )}
       </Pressable>
     );
   };
+
+  const ListFooter = () => (
+    <Pressable
+      style={styles.addButton}
+      onPress={handleOpenAddModal}
+      testID="add-onderdeel-btn"
+    >
+      <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
+      <Text style={styles.addButtonText}>Onderdeel toevoegen</Text>
+    </Pressable>
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -187,16 +289,108 @@ export default function ToestelScreen() {
           { paddingBottom: insets.bottom + webBottomInset + 20 },
         ]}
         showsVerticalScrollIndicator={false}
-        scrollEnabled={!!displayOnderdelen.length}
+        scrollEnabled={true}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="fitness-outline" size={40} color={Colors.textTertiary} />
-            <Text style={styles.emptyText}>
-              Geen onderdelen voor niveau {activeFilter}
-            </Text>
-          </View>
+          activeFilter ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="fitness-outline" size={40} color={Colors.textTertiary} />
+              <Text style={styles.emptyText}>
+                Geen onderdelen voor niveau {activeFilter}
+              </Text>
+            </View>
+          ) : null
         }
+        ListFooterComponent={<ListFooter />}
       />
+
+      <Modal
+        visible={addModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setAddModalVisible(false)}
+          />
+          <View
+            style={[
+              styles.modalSheet,
+              { paddingBottom: insets.bottom + webBottomInset + 16 },
+            ]}
+          >
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Onderdeel toevoegen</Text>
+
+            <Text style={styles.fieldLabel}>Naam</Text>
+            <TextInput
+              style={styles.textInput}
+              value={newNaam}
+              onChangeText={(t) => {
+                setNewNaam(t);
+                setErrorMsg("");
+              }}
+              placeholder="bijv. Salto gestrekt"
+              placeholderTextColor={Colors.textTertiary}
+              autoFocus
+              testID="custom-naam-input"
+            />
+            {!!errorMsg && (
+              <Text style={styles.errorText}>{errorMsg}</Text>
+            )}
+
+            <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Niveau</Text>
+            <View style={styles.niveauRow}>
+              {TURN_ONDERDEEL_NIVEAUS.map((n) => (
+                <Pressable
+                  key={n}
+                  style={[
+                    styles.niveauOption,
+                    newNiveau === n && styles.niveauOptionActive,
+                  ]}
+                  onPress={() => setNewNiveau(n)}
+                  testID={`select-niveau-${n}`}
+                >
+                  <Text
+                    style={[
+                      styles.niveauOptionText,
+                      newNiveau === n && styles.niveauOptionTextActive,
+                    ]}
+                  >
+                    {n}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.cancelBtn}
+                onPress={() => setAddModalVisible(false)}
+                testID="cancel-add-btn"
+              >
+                <Text style={styles.cancelBtnText}>Annuleren</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                onPress={handleSaveCustom}
+                disabled={saving}
+                testID="save-add-btn"
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Text style={styles.saveBtnText}>Toevoegen</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -337,5 +531,128 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Inter_500Medium",
     color: Colors.primary,
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+    marginTop: 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    borderStyle: "dashed",
+  },
+  addButtonText: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+    color: Colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  modalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.borderLight,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.text,
+    marginBottom: 20,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    color: Colors.textSecondary,
+    marginBottom: 8,
+  },
+  textInput: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  errorText: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: "#DC2626",
+    marginTop: 6,
+  },
+  niveauRow: {
+    flexDirection: "row",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  niveauOption: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  niveauOptionActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  niveauOptionText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.textSecondary,
+  },
+  niveauOptionTextActive: {
+    color: Colors.white,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 24,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+  },
+  cancelBtnText: {
+    fontSize: 15,
+    fontFamily: "Inter_500Medium",
+    color: Colors.textSecondary,
+  },
+  saveBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: "center",
+  },
+  saveBtnText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.white,
   },
 });

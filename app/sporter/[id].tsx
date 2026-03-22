@@ -20,17 +20,21 @@ import {
   getSporter,
   deleteSporter,
   updateSporterNiveau,
+  getOnderdelen,
+  calculateDWaarde,
   TOESTELLEN,
   NIVEAUS,
   getMinimumForNiveau,
   type Sporter,
   type Toestel,
+  type TurnOnderdeel,
 } from "@/lib/storage";
 
 export default function SporterScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
   const [sporter, setSporter] = useState<Sporter | null>(null);
+  const [onderdelenMap, setOnderdelenMap] = useState<Record<string, TurnOnderdeel[]>>({});
   const [loading, setLoading] = useState(true);
   const [showNiveauPicker, setShowNiveauPicker] = useState(false);
 
@@ -46,8 +50,16 @@ export default function SporterScreen() {
   const loadSporter = async () => {
     if (!id) return;
     setLoading(true);
-    const data = await getSporter(id);
-    setSporter(data || null);
+    const [data, ...onderdelenResults] = await Promise.all([
+      getSporter(id),
+      ...TOESTELLEN.map((t) => getOnderdelen(t as Toestel)),
+    ]);
+    setSporter((data as Sporter) || null);
+    const map: Record<string, TurnOnderdeel[]> = {};
+    TOESTELLEN.forEach((t, i) => {
+      map[t] = onderdelenResults[i] as TurnOnderdeel[];
+    });
+    setOnderdelenMap(map);
     setLoading(false);
   };
 
@@ -150,10 +162,13 @@ export default function SporterScreen() {
         showsVerticalScrollIndicator={false}
       >
         {TOESTELLEN.map((toestel) => {
-          const selected = sporter.onderdelen[toestel]?.length || 0;
+          const selectedNamen = sporter.onderdelen[toestel] || [];
+          const selected = selectedNamen.length;
           const minimum = getMinimumForNiveau(sporter.niveau, toestel as Toestel);
           const progress = Math.min(selected / minimum, 1);
           const isComplete = selected >= minimum;
+          const allOnderdelen = onderdelenMap[toestel] || [];
+          const dWaarde = calculateDWaarde(selectedNamen, allOnderdelen);
 
           return (
             <Pressable
@@ -171,7 +186,12 @@ export default function SporterScreen() {
               }}
               testID={`toestel-${toestel}`}
             >
-              <Text style={styles.toestelNaam}>{toestel}</Text>
+              <View style={styles.toestelLeft}>
+                <Text style={styles.toestelNaam}>{toestel}</Text>
+                <Text style={styles.dWaardeText}>
+                  D: {dWaarde.toFixed(1)}
+                </Text>
+              </View>
 
               <View style={styles.progressSection}>
                 <View style={styles.progressBarTrack}>
@@ -327,11 +347,19 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceSecondary,
     transform: [{ scale: 0.98 }],
   },
+  toestelLeft: {
+    width: 80,
+    gap: 2,
+  },
   toestelNaam: {
     fontSize: 16,
     fontFamily: "Inter_600SemiBold",
     color: Colors.text,
-    width: 80,
+  },
+  dWaardeText: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    color: Colors.primary,
   },
   progressSection: {
     flex: 1,

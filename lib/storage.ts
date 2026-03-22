@@ -264,6 +264,25 @@ export async function deleteSporter(id: string): Promise<void> {
   await saveSporters(filtered);
 }
 
+export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
+  tA: 0.1,
+  A: 0.1,
+  B: 0.2,
+  C: 0.3,
+  D: 0.4,
+  E: 0.5,
+};
+
+export function calculateDWaarde(
+  selectedNamen: string[],
+  allOnderdelen: TurnOnderdeel[]
+): number {
+  return selectedNamen.reduce((sum, naam) => {
+    const found = allOnderdelen.find((o) => o.naam === naam);
+    return sum + (found ? (DWAARDE_PER_NIVEAU[found.niveau] ?? 0) : 0);
+  }, 0);
+}
+
 export const NIVEAUS = [
   "Instap",
   "Pupil 1",

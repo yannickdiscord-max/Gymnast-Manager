@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.borderLight,
   },
   niveauOptionSelected: {
-    backgroundColor: "#F0FDFA",
+    backgroundColor: "#FFF8F0",
   },
   niveauOptionPressed: {
     backgroundColor: Colors.surfaceSecondary,

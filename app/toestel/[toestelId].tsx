@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  onderdeelItemSelected: { backgroundColor: "#F0FDFA", borderColor: "#CCFBF1" },
+  onderdeelItemSelected: { backgroundColor: "#FFF8F0", borderColor: "#FFD9A0" },
   onderdeelInfo: { flex: 1 },
   onderdeelText: { fontSize: 15, fontFamily: "Inter_400Regular", color: Colors.textSecondary },
   onderdeelTextSelected: { fontFamily: "Inter_500Medium", color: Colors.primaryDark },

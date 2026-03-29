@@ -339,24 +339,24 @@ export default function ToestelScreen() {
 
 function getNiveauTagStyle(niveau: TurnOnderdeelNiveau) {
   const map: Record<TurnOnderdeelNiveau, object> = {
-    tA: { backgroundColor: "#F0F9FF", borderColor: "#BAE6FD" },
-    A: { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" },
-    B: { backgroundColor: "#FEFCE8", borderColor: "#FEF08A" },
-    C: { backgroundColor: "#FFF7ED", borderColor: "#FED7AA" },
-    D: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
-    E: { backgroundColor: "#FAF5FF", borderColor: "#E9D5FF" },
+    tA: { backgroundColor: "#1A2535", borderColor: "#2A4060" },
+    A: { backgroundColor: "#1A2E1A", borderColor: "#2A4A2A" },
+    B: { backgroundColor: "#2E2A14", borderColor: "#4A4020" },
+    C: { backgroundColor: "#2E1E10", borderColor: "#4A3020" },
+    D: { backgroundColor: "#2E1515", borderColor: "#4A2020" },
+    E: { backgroundColor: "#25103A", borderColor: "#3A1A55" },
   };
   return map[niveau] || {};
 }
 
 function getNiveauTagTextStyle(niveau: TurnOnderdeelNiveau) {
   const map: Record<TurnOnderdeelNiveau, object> = {
-    tA: { color: "#0369A1" },
-    A: { color: "#15803D" },
-    B: { color: "#A16207" },
-    C: { color: "#C2410C" },
-    D: { color: "#DC2626" },
-    E: { color: "#7C3AED" },
+    tA: { color: "#60A8D8" },
+    A: { color: "#5CC85C" },
+    B: { color: "#C8A840" },
+    C: { color: "#D87840" },
+    D: { color: "#D86060" },
+    E: { color: "#A870D0" },
   };
   return map[niveau] || {};
 }
@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  onderdeelItemSelected: { backgroundColor: "#FFF8F0", borderColor: "#FFD9A0" },
+  onderdeelItemSelected: { backgroundColor: "#4A3820", borderColor: "#7A5C20" },
   onderdeelInfo: { flex: 1 },
   onderdeelText: { fontSize: 15, fontFamily: "Inter_400Regular", color: Colors.textSecondary },
   onderdeelTextSelected: { fontFamily: "Inter_500Medium", color: Colors.primaryDark },
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  errorText: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#DC2626", marginTop: 6 },
+  errorText: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.error, marginTop: 6 },
   niveauRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   niveauOption: {
     paddingHorizontal: 18,

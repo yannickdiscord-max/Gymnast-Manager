@@ -279,12 +279,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#FEF2F2",
+    backgroundColor: "#3D1515",
     borderRadius: 12,
     padding: 14,
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: "#FECACA",
+    borderColor: "#6B2525",
   },
   errorText: {
     fontSize: 14,
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.borderLight,
   },
   niveauOptionSelected: {
-    backgroundColor: "#F0FDFA",
+    backgroundColor: "#4A3820",
   },
   niveauOptionPressed: {
     backgroundColor: Colors.surfaceSecondary,

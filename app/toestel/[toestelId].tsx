@@ -260,7 +260,7 @@ export default function ToestelScreen() {
             onPress={handleOpenAddModal}
             testID="add-onderdeel-btn"
           >
-            <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
+            <Ionicons name="add" size={22} color={Colors.white} />
             <Text style={styles.addButtonText}>Onderdeel toevoegen</Text>
           </Pressable>
         }
@@ -414,12 +414,10 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
     marginTop: 4,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: Colors.primary,
-    borderStyle: "dashed",
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
   },
-  addButtonText: { fontSize: 15, fontFamily: "Inter_500Medium", color: Colors.primary },
+  addButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.white },
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
   modalSheet: {

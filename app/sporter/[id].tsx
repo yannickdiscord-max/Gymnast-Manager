@@ -157,7 +157,7 @@ export default function SporterScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + webBottomInset + 40 },
+          { paddingBottom: insets.bottom + webBottomInset + 110 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -218,6 +218,20 @@ export default function SporterScreen() {
           );
         })}
       </ScrollView>
+
+      <View style={[styles.footer, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
+        <Pressable
+          style={({ pressed }) => [styles.scoresButton, pressed && styles.scoresButtonPressed]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push({ pathname: "/scores/[sporterId]", params: { sporterId: sporter.id } });
+          }}
+          testID="voorgaande-scores-btn"
+        >
+          <Ionicons name="trophy-outline" size={20} color={Colors.white} />
+          <Text style={styles.scoresButtonText}>Voorgaande scores</Text>
+        </Pressable>
+      </View>
 
       <Modal
         visible={showNiveauPicker}
@@ -437,6 +451,26 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     color: Colors.primary,
   },
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    backgroundColor: Colors.background,
+  },
+  scoresButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.primary,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  scoresButtonPressed: { backgroundColor: Colors.primaryDark, transform: [{ scale: 0.98 }] },
+  scoresButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.white },
   errorTitle: {
     fontSize: 18,
     fontFamily: "Inter_600SemiBold",

@@ -264,6 +264,84 @@ export async function deleteSporter(id: string): Promise<void> {
   await saveSporters(filtered);
 }
 
+export interface ToestelScore {
+  dScore: number;
+  eScore: number;
+  penalty: number;
+}
+
+export interface Wedstrijd {
+  id: string;
+  sporterId: string;
+  naam: string;
+  datum: string;
+  locatie: string;
+  scores: Record<string, ToestelScore>;
+}
+
+const WEDSTRIJDEN_KEY = "turnteam_wedstrijden";
+
+export async function getWedstrijden(sporterId: string): Promise<Wedstrijd[]> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return [];
+  const all: Wedstrijd[] = JSON.parse(data);
+  return all
+    .filter((w) => w.sporterId === sporterId)
+    .sort((a, b) => b.datum.localeCompare(a.datum));
+}
+
+export async function getWedstrijd(id: string): Promise<Wedstrijd | undefined> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return undefined;
+  const all: Wedstrijd[] = JSON.parse(data);
+  return all.find((w) => w.id === id);
+}
+
+export async function addWedstrijd(
+  sporterId: string,
+  naam: string,
+  datum: string,
+  locatie: string
+): Promise<Wedstrijd> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  const all: Wedstrijd[] = data ? JSON.parse(data) : [];
+  const newWedstrijd: Wedstrijd = {
+    id: Crypto.randomUUID(),
+    sporterId,
+    naam,
+    datum,
+    locatie,
+    scores: {},
+  };
+  all.push(newWedstrijd);
+  await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+  return newWedstrijd;
+}
+
+export async function saveWedstrijdScores(
+  id: string,
+  scores: Record<string, ToestelScore>
+): Promise<void> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return;
+  const all: Wedstrijd[] = JSON.parse(data);
+  const index = all.findIndex((w) => w.id === id);
+  if (index !== -1) {
+    all[index].scores = scores;
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+  }
+}
+
+export async function deleteWedstrijd(id: string): Promise<void> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return;
+  const all: Wedstrijd[] = JSON.parse(data);
+  await AsyncStorage.setItem(
+    WEDSTRIJDEN_KEY,
+    JSON.stringify(all.filter((w) => w.id !== id))
+  );
+}
+
 export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
   tA: 0.1,
   A: 0.1,

@@ -17,6 +17,8 @@ function RootLayoutNav() {
       <Stack.Screen name="add-sporter" options={{ presentation: "modal" }} />
       <Stack.Screen name="sporter/[id]" />
       <Stack.Screen name="toestel/[toestelId]" />
+      <Stack.Screen name="scores/[sporterId]" />
+      <Stack.Screen name="wedstrijd/[wedstrijdId]" />
     </Stack>
   );
 }

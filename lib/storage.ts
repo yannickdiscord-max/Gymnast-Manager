@@ -285,9 +285,15 @@ export async function getWedstrijden(sporterId: string): Promise<Wedstrijd[]> {
   const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
   if (!data) return [];
   const all: Wedstrijd[] = JSON.parse(data);
+  const toTimestamp = (datum: string): number => {
+    const parts = datum.split("-");
+    if (parts.length !== 3) return 0;
+    const [day, month, year] = parts.map(Number);
+    return new Date(year, month - 1, day).getTime();
+  };
   return all
     .filter((w) => w.sporterId === sporterId)
-    .sort((a, b) => b.datum.localeCompare(a.datum));
+    .sort((a, b) => toTimestamp(b.datum) - toTimestamp(a.datum));
 }
 
 export async function getWedstrijd(id: string): Promise<Wedstrijd | undefined> {

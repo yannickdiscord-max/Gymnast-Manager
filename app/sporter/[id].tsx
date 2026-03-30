@@ -229,7 +229,7 @@ export default function SporterScreen() {
           testID="voorgaande-scores-btn"
         >
           <Ionicons name="trophy-outline" size={20} color={Colors.white} />
-          <Text style={styles.scoresButtonText}>Voorgaande scores</Text>
+          <Text style={styles.scoresButtonText}>Wedstrijdscores</Text>
         </Pressable>
       </View>
 

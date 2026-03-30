@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -70,14 +71,42 @@ export default function ScoresScreen() {
     setModalVisible(true);
   };
 
+  const isValidEuropeanDate = (val: string): boolean => {
+    const match = val.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (!match) return false;
+    const day = parseInt(match[1]);
+    const month = parseInt(match[2]);
+    const year = parseInt(match[3]);
+    if (month < 1 || month > 12) return false;
+    if (day < 1) return false;
+    const date = new Date(year, month - 1, day);
+    return (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    );
+  };
+
   const handleSave = async () => {
-    if (!naam.trim()) { setErrorMsg("Vul een naam in"); return; }
+    if (!naam.trim()) { setErrorMsg("Vul een wedstrijdnaam in"); return; }
     if (!datum.trim()) { setErrorMsg("Vul een datum in"); return; }
+    if (!isValidEuropeanDate(datum.trim())) {
+      setErrorMsg("Datum moet DD-MM-JJJJ zijn (bijv. 14-03-2025)");
+      return;
+    }
     if (!locatie.trim()) { setErrorMsg("Vul een locatie in"); return; }
 
     setSaving(true);
     const wedstrijd = await addWedstrijd(sporterId!, naam.trim(), datum.trim(), locatie.trim());
-    setWedstrijden((prev) => [wedstrijd, ...prev]);
+    setWedstrijden((prev) =>
+      [...prev, wedstrijd].sort((a, b) => {
+        const parse = (d: string) => {
+          const [dd, mm, yyyy] = d.split("-").map(Number);
+          return new Date(yyyy, mm - 1, dd).getTime();
+        };
+        return parse(b.datum) - parse(a.datum);
+      })
+    );
     setSaving(false);
     setModalVisible(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -85,9 +114,26 @@ export default function ScoresScreen() {
   };
 
   const handleDelete = async (id: string) => {
-    await deleteWedstrijd(id);
-    setWedstrijden((prev) => prev.filter((w) => w.id !== id));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const doDelete = async () => {
+      await deleteWedstrijd(id);
+      setWedstrijden((prev) => prev.filter((w) => w.id !== id));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Weet je zeker dat je deze wedstrijd definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.")) {
+        await doDelete();
+      }
+    } else {
+      Alert.alert(
+        "Wedstrijd verwijderen",
+        "Weet je zeker dat je deze wedstrijd definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
+        [
+          { text: "Annuleren", style: "cancel" },
+          { text: "Verwijderen", style: "destructive", onPress: doDelete },
+        ]
+      );
+    }
   };
 
   const getTotaalScore = (wedstrijd: Wedstrijd) => {
@@ -155,7 +201,7 @@ export default function ScoresScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Voorgaande scores</Text>
+          <Text style={styles.headerTitle}>Wedstrijdscores</Text>
           {sporter && <Text style={styles.headerSub}>{sporter.naam}</Text>}
         </View>
         <View style={{ width: 24 }} />
@@ -206,7 +252,7 @@ export default function ScoresScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Wedstrijd toevoegen</Text>
 
-            <Text style={styles.fieldLabel}>Naam</Text>
+            <Text style={styles.fieldLabel}>Wedstrijdnaam</Text>
             <TextInput
               style={styles.textInput}
               value={naam}
@@ -217,13 +263,15 @@ export default function ScoresScreen() {
               testID="naam-input"
             />
 
-            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Datum</Text>
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Datum (DD-MM-JJJJ)</Text>
             <TextInput
               style={styles.textInput}
               value={datum}
               onChangeText={(t) => { setDatum(t); setErrorMsg(""); }}
-              placeholder="bijv. 12-04-2025"
+              placeholder="bijv. 14-03-2025"
               placeholderTextColor={Colors.textTertiary}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
               testID="datum-input"
             />
 

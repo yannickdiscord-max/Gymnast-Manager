@@ -189,7 +189,11 @@ export default function ScoresScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} testID="back-btn">
+        <Pressable
+          onPress={() => router.push({ pathname: "/sporter/[id]", params: { id: sporterId! } })}
+          hitSlop={12}
+          testID="back-btn"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>

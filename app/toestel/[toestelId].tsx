@@ -1,17 +1,18 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
-  ScrollView,
   FlatList,
   ActivityIndicator,
   Platform,
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  PanResponder,
 } from "react-native";
+import { ScrollView } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +21,7 @@ import Colors from "@/constants/colors";
 import {
   getSporter,
   updateSporterOnderdelen,
+  updateSporterOefening,
   getOnderdelen,
   addOnderdeel,
   deleteOnderdeel,
@@ -30,6 +32,12 @@ import {
   type TurnOnderdeel,
 } from "@/lib/storage";
 
+const CELL_H = 64;
+const OEFENING_BG = "#1C3035";
+const OEFENING_BORDER = "#285060";
+const OEFENING_COLOR = "#3DD8BA";
+const OEFENING_BADGE_BG = "#1A4048";
+
 export default function ToestelScreen() {
   const { toestelId, sporterId } = useLocalSearchParams<{
     toestelId: string;
@@ -38,8 +46,11 @@ export default function ToestelScreen() {
   const insets = useSafeAreaInsets();
   const [sporter, setSporter] = useState<Sporter | null>(null);
   const [onderdelen, setOnderdelen] = useState<TurnOnderdeel[]>([]);
+  const [oefening, setOefening] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<TurnOnderdeelNiveau | null>(null);
+
+  const [actionItem, setActionItem] = useState<TurnOnderdeel | null>(null);
 
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newNaam, setNewNaam] = useState("");
@@ -49,8 +60,19 @@ export default function ToestelScreen() {
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
-
   const toestel = toestelId as Toestel;
+
+  const oefeningRef = useRef<string[]>([]);
+  const dragRef = useRef<{ naam: string; toIdx: number } | null>(null);
+  const containerAbsY = useRef(0);
+  const panHandlersCache = useRef<Map<string, any>>(new Map());
+  const containerRef = useRef<View>(null);
+  const [draggingNaam, setDraggingNaam] = useState<string | null>(null);
+  const [draggingToIdx, setDraggingToIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    oefeningRef.current = oefening;
+  }, [oefening]);
 
   useFocusEffect(
     useCallback(() => {
@@ -67,22 +89,143 @@ export default function ToestelScreen() {
     ]);
     setSporter(sporterData || null);
     setOnderdelen(onderdelenData);
+    const oefeningData = sporterData?.oefening?.[toestel] || [];
+    setOefening(oefeningData);
+    oefeningRef.current = oefeningData;
     setLoading(false);
   };
 
-  const handleToggleOnderdeel = async (naam: string) => {
-    if (!sporter) return;
+  const getPanHandlers = (naam: string) => {
+    if (panHandlersCache.current.has(naam)) {
+      return panHandlersCache.current.get(naam);
+    }
+    const handlers = PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        const idx = oefeningRef.current.indexOf(naam);
+        containerRef.current?.measure((_x, _y, _w, _h, _px, pageY) => {
+          containerAbsY.current = pageY;
+          if (dragRef.current) dragRef.current = { naam, toIdx: idx };
+        });
+        dragRef.current = { naam, toIdx: idx };
+        setDraggingNaam(naam);
+        setDraggingToIdx(idx);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      },
+      onPanResponderMove: (_, { moveY }) => {
+        if (!dragRef.current) return;
+        const relY = moveY - containerAbsY.current;
+        const target = Math.max(
+          0,
+          Math.min(oefeningRef.current.length - 1, Math.floor(relY / CELL_H))
+        );
+        if (target !== dragRef.current.toIdx) {
+          dragRef.current.toIdx = target;
+          setDraggingToIdx(target);
+          Haptics.selectionAsync();
+        }
+      },
+      onPanResponderRelease: () => {
+        if (dragRef.current) {
+          const { naam: n, toIdx } = dragRef.current;
+          const newOrder = oefeningRef.current.filter((x) => x !== n);
+          newOrder.splice(toIdx, 0, n);
+          oefeningRef.current = newOrder;
+          setOefening(newOrder);
+          handleOefeningReorder(newOrder);
+        }
+        dragRef.current = null;
+        setDraggingNaam(null);
+        setDraggingToIdx(null);
+      },
+      onPanResponderTerminate: () => {
+        dragRef.current = null;
+        setDraggingNaam(null);
+        setDraggingToIdx(null);
+      },
+    }).panHandlers;
+    panHandlersCache.current.set(naam, handlers);
+    return handlers;
+  };
+
+  const displayedOefening = useMemo(() => {
+    if (!draggingNaam || draggingToIdx === null) return oefening;
+    const without = oefening.filter((n) => n !== draggingNaam);
+    without.splice(draggingToIdx, 0, draggingNaam);
+    return without;
+  }, [oefening, draggingNaam, draggingToIdx]);
+
+  const handleOnderdeelPress = (item: TurnOnderdeel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActionItem(item);
+  };
 
+  const handleSetGeleerd = async (naam: string) => {
+    if (!sporter) return;
+    setActionItem(null);
     const current = sporter.onderdelen[toestel] || [];
-    const updated = current.includes(naam)
-      ? current.filter((o) => o !== naam)
-      : [...current, naam];
+    const isGeleerd = current.includes(naam);
+    if (isGeleerd) {
+      const updatedOnderdelen = current.filter((o) => o !== naam);
+      const updatedOefening = oefening.filter((o) => o !== naam);
+      await updateSporterOnderdelen(sporter.id, toestel, updatedOnderdelen);
+      await updateSporterOefening(sporter.id, toestel, updatedOefening);
+      setOefening(updatedOefening);
+      oefeningRef.current = updatedOefening;
+      setSporter({
+        ...sporter,
+        onderdelen: { ...sporter.onderdelen, [toestel]: updatedOnderdelen },
+        oefening: { ...sporter.oefening, [toestel]: updatedOefening },
+      });
+    } else {
+      const updatedOnderdelen = [...current, naam];
+      await updateSporterOnderdelen(sporter.id, toestel, updatedOnderdelen);
+      setSporter({
+        ...sporter,
+        onderdelen: { ...sporter.onderdelen, [toestel]: updatedOnderdelen },
+      });
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
 
-    await updateSporterOnderdelen(sporter.id, toestel, updated);
+  const handleAddToOefening = async (naam: string) => {
+    if (!sporter) return;
+    setActionItem(null);
+    const current = sporter.onderdelen[toestel] || [];
+    const updatedOnderdelen = current.includes(naam) ? current : [...current, naam];
+    const updatedOefening = oefening.includes(naam) ? oefening : [...oefening, naam];
+    await updateSporterOnderdelen(sporter.id, toestel, updatedOnderdelen);
+    await updateSporterOefening(sporter.id, toestel, updatedOefening);
+    setOefening(updatedOefening);
+    oefeningRef.current = updatedOefening;
     setSporter({
       ...sporter,
-      onderdelen: { ...sporter.onderdelen, [toestel]: updated },
+      onderdelen: { ...sporter.onderdelen, [toestel]: updatedOnderdelen },
+      oefening: { ...sporter.oefening, [toestel]: updatedOefening },
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleRemoveFromOefening = async (naam: string) => {
+    if (!sporter) return;
+    setActionItem(null);
+    const updatedOefening = oefening.filter((o) => o !== naam);
+    await updateSporterOefening(sporter.id, toestel, updatedOefening);
+    setOefening(updatedOefening);
+    oefeningRef.current = updatedOefening;
+    setSporter({
+      ...sporter,
+      oefening: { ...sporter.oefening, [toestel]: updatedOefening },
+    });
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const handleOefeningReorder = async (newOrder: string[]) => {
+    if (!sporter) return;
+    await updateSporterOefening(sporter.id, toestel, newOrder);
+    setSporter({
+      ...sporter,
+      oefening: { ...sporter.oefening, [toestel]: newOrder },
     });
   };
 
@@ -104,7 +247,6 @@ export default function ToestelScreen() {
       setErrorMsg("Vul een naam in");
       return;
     }
-
     const duplicate = onderdelen.some(
       (o) => o.naam.toLowerCase() === trimmed.toLowerCase()
     );
@@ -112,7 +254,6 @@ export default function ToestelScreen() {
       setErrorMsg("Dit onderdeel bestaat al");
       return;
     }
-
     setSaving(true);
     await addOnderdeel(toestel, { naam: trimmed, niveau: newNiveau });
     const updated = await getOnderdelen(toestel);
@@ -126,24 +267,24 @@ export default function ToestelScreen() {
     await deleteOnderdeel(toestel, naam);
     const updated = await getOnderdelen(toestel);
     setOnderdelen(updated);
-
     if (sporter) {
       const current = sporter.onderdelen[toestel] || [];
-      if (current.includes(naam)) {
-        const filtered = current.filter((o) => o !== naam);
-        await updateSporterOnderdelen(sporter.id, toestel, filtered);
-        setSporter({
-          ...sporter,
-          onderdelen: { ...sporter.onderdelen, [toestel]: filtered },
-        });
+      const updatedOnderdelen = current.filter((o) => o !== naam);
+      const updatedOefening = oefening.filter((o) => o !== naam);
+      await updateSporterOnderdelen(sporter.id, toestel, updatedOnderdelen);
+      if (updatedOefening.length !== oefening.length) {
+        await updateSporterOefening(sporter.id, toestel, updatedOefening);
+        setOefening(updatedOefening);
+        oefeningRef.current = updatedOefening;
       }
+      setSporter({
+        ...sporter,
+        onderdelen: { ...sporter.onderdelen, [toestel]: updatedOnderdelen },
+        oefening: { ...sporter.oefening, [toestel]: updatedOefening },
+      });
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
-
-  const displayOnderdelen = activeFilter
-    ? onderdelen.filter((o) => o.niveau === activeFilter)
-    : onderdelen;
 
   if (loading) {
     return (
@@ -167,12 +308,25 @@ export default function ToestelScreen() {
 
   const selected = sporter.onderdelen[toestel] || [];
 
+  const displayOnderdelen = onderdelen.filter((o) => {
+    if (oefening.includes(o.naam)) return false;
+    if (activeFilter && o.niveau !== activeFilter) return false;
+    return true;
+  });
+
+  const isInOefening = actionItem ? oefening.includes(actionItem.naam) : false;
+  const isGeleerd = actionItem ? selected.includes(actionItem.naam) : false;
+
   const renderOnderdeel = ({ item }: { item: TurnOnderdeel }) => {
     const isSelected = selected.includes(item.naam);
     return (
       <Pressable
-        style={[styles.onderdeelItem, isSelected && styles.onderdeelItemSelected]}
-        onPress={() => handleToggleOnderdeel(item.naam)}
+        style={({ pressed }) => [
+          styles.onderdeelItem,
+          isSelected && styles.onderdeelItemSelected,
+          pressed && styles.itemPressed,
+        ]}
+        onPress={() => handleOnderdeelPress(item)}
         testID={`onderdeel-${item.naam}`}
       >
         <Ionicons
@@ -201,6 +355,53 @@ export default function ToestelScreen() {
     );
   };
 
+  const OefeningSection = oefening.length > 0 ? (
+    <View style={styles.oefeningSection}>
+      <Text style={styles.oefeningSectionTitle}>Oefening</Text>
+      <View
+        ref={containerRef}
+        onLayout={() => {
+          containerRef.current?.measure((_x, _y, _w, _h, _px, pageY) => {
+            containerAbsY.current = pageY;
+          });
+        }}
+      >
+        {displayedOefening.map((naam, idx) => {
+          const item = onderdelen.find((o) => o.naam === naam);
+          if (!item) return null;
+          const isDragging = draggingNaam === naam;
+          return (
+            <View
+              key={naam}
+              style={[styles.oefeningItem, isDragging && styles.oefeningItemDragging]}
+            >
+              <Pressable
+                style={styles.oefeningItemBody}
+                onPress={() => handleOnderdeelPress(item)}
+                testID={`oefening-${naam}`}
+              >
+                <View style={styles.orderBadge}>
+                  <Text style={styles.orderText}>{idx + 1}</Text>
+                </View>
+                <View style={styles.oefeningInfo}>
+                  <Text style={styles.oefeningText}>{item.naam}</Text>
+                </View>
+                <View style={[styles.niveauTag, getNiveauTagStyle(item.niveau)]}>
+                  <Text style={[styles.niveauTagText, getNiveauTagTextStyle(item.niveau)]}>
+                    {item.niveau}
+                  </Text>
+                </View>
+              </Pressable>
+              <View {...getPanHandlers(naam)} style={styles.gripHandle}>
+                <Ionicons name="reorder-three-outline" size={24} color={OEFENING_COLOR} />
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  ) : null;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
@@ -210,29 +411,6 @@ export default function ToestelScreen() {
         <Text style={styles.headerTitle}>{toestel}</Text>
         <View style={{ width: 24 }} />
       </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-        style={styles.filterScroll}
-      >
-        {TURN_ONDERDEEL_NIVEAUS.map((niveau) => {
-          const isActive = activeFilter === niveau;
-          return (
-            <Pressable
-              key={niveau}
-              style={[styles.filterChip, isActive && styles.filterChipActive]}
-              onPress={() => handleFilterPress(niveau)}
-              testID={`filter-${niveau}`}
-            >
-              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                {niveau}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
 
       <FlatList
         data={displayOnderdelen}
@@ -244,6 +422,34 @@ export default function ToestelScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={true}
+        ListHeaderComponent={
+          <>
+            {OefeningSection}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+              style={styles.filterScroll}
+              scrollEnabled={true}
+            >
+              {TURN_ONDERDEEL_NIVEAUS.map((niveau) => {
+                const isActive = activeFilter === niveau;
+                return (
+                  <Pressable
+                    key={niveau}
+                    style={[styles.filterChip, isActive && styles.filterChipActive]}
+                    onPress={() => handleFilterPress(niveau)}
+                    testID={`filter-${niveau}`}
+                  >
+                    <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                      {niveau}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </>
+        }
         ListEmptyComponent={
           activeFilter ? (
             <View style={styles.emptyContainer}>
@@ -266,6 +472,105 @@ export default function ToestelScreen() {
         }
       />
 
+      {/* Action modal */}
+      <Modal
+        visible={actionItem !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setActionItem(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setActionItem(null)} />
+        <View style={[styles.actionSheet, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
+          <View style={styles.modalHandle} />
+          {actionItem && (
+            <>
+              <View style={styles.actionHeader}>
+                <Text style={styles.actionTitle} numberOfLines={1}>{actionItem.naam}</Text>
+                <View style={[styles.niveauTag, getNiveauTagStyle(actionItem.niveau)]}>
+                  <Text style={[styles.niveauTagText, getNiveauTagTextStyle(actionItem.niveau)]}>
+                    {actionItem.niveau}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.statusRow}>
+                <View style={[
+                  styles.statusBadge,
+                  isInOefening && styles.statusBadgeOefening,
+                  isGeleerd && !isInOefening && styles.statusBadgeGeleerd,
+                ]}>
+                  <Ionicons
+                    name={isInOefening ? "star" : isGeleerd ? "checkmark-circle" : "ellipse-outline"}
+                    size={14}
+                    color={isInOefening ? OEFENING_COLOR : isGeleerd ? Colors.primary : Colors.textTertiary}
+                  />
+                  <Text style={[
+                    styles.statusText,
+                    isInOefening && styles.statusTextOefening,
+                    isGeleerd && !isInOefening && styles.statusTextGeleerd,
+                  ]}>
+                    {isInOefening ? "In oefening" : isGeleerd ? "Geleerd" : "Niet geselecteerd"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.actionButtons}>
+                {!isInOefening && (
+                  <Pressable
+                    style={({ pressed }) => [styles.actionBtn, styles.actionBtnOefening, pressed && styles.actionBtnPressed]}
+                    onPress={() => handleAddToOefening(actionItem.naam)}
+                    testID="add-to-oefening-btn"
+                  >
+                    <Ionicons name="star-outline" size={20} color={OEFENING_COLOR} />
+                    <Text style={[styles.actionBtnText, styles.actionBtnTextOefening]}>
+                      Aan oefening toevoegen
+                    </Text>
+                  </Pressable>
+                )}
+
+                {isInOefening && (
+                  <Pressable
+                    style={({ pressed }) => [styles.actionBtn, styles.actionBtnNeutral, pressed && styles.actionBtnPressed]}
+                    onPress={() => handleRemoveFromOefening(actionItem.naam)}
+                    testID="remove-from-oefening-btn"
+                  >
+                    <Ionicons name="arrow-down-outline" size={20} color={Colors.textSecondary} />
+                    <Text style={[styles.actionBtnText, styles.actionBtnTextNeutral]}>
+                      Alleen geleerd
+                    </Text>
+                  </Pressable>
+                )}
+
+                {!isGeleerd && (
+                  <Pressable
+                    style={({ pressed }) => [styles.actionBtn, styles.actionBtnGeleerd, pressed && styles.actionBtnPressed]}
+                    onPress={() => handleSetGeleerd(actionItem.naam)}
+                    testID="set-geleerd-btn"
+                  >
+                    <Ionicons name="checkmark-circle-outline" size={20} color={Colors.primary} />
+                    <Text style={[styles.actionBtnText, styles.actionBtnTextGeleerd]}>Geleerd</Text>
+                  </Pressable>
+                )}
+
+                {isGeleerd && (
+                  <Pressable
+                    style={({ pressed }) => [styles.actionBtn, styles.actionBtnRemove, pressed && styles.actionBtnPressed]}
+                    onPress={() => handleSetGeleerd(actionItem.naam)}
+                    testID="remove-geleerd-btn"
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color={Colors.error} />
+                    <Text style={[styles.actionBtnText, styles.actionBtnTextRemove]}>
+                      Verwijderen uit geleerd
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            </>
+          )}
+        </View>
+      </Modal>
+
+      {/* Add onderdeel modal */}
       <Modal
         visible={addModalVisible}
         transparent
@@ -392,19 +697,23 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: Colors.surface,
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
   onderdeelItemSelected: { backgroundColor: "#4A3820", borderColor: "#7A5C20" },
+  itemPressed: { opacity: 0.8 },
   onderdeelInfo: { flex: 1 },
   onderdeelText: { fontSize: 15, fontFamily: "Inter_400Regular", color: Colors.textSecondary },
   onderdeelTextSelected: { fontFamily: "Inter_500Medium", color: Colors.primaryDark },
   niveauTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   niveauTagText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
   emptyContainer: { alignItems: "center", paddingTop: 60, gap: 8 },
-  emptyText: { fontSize: 15, fontFamily: "Inter_400Regular", color: Colors.textTertiary, textAlign: "center" },
+  emptyText: {
+    fontSize: 15, fontFamily: "Inter_400Regular",
+    color: Colors.textTertiary, textAlign: "center",
+  },
   errorTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.textSecondary },
   backLink: { fontSize: 16, fontFamily: "Inter_500Medium", color: Colors.primary },
   addButton: {
@@ -418,9 +727,71 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   addButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.white },
+
+  oefeningSection: { paddingHorizontal: 20, marginBottom: 16 },
+  oefeningSectionTitle: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: OEFENING_COLOR,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 8,
+  },
+  oefeningItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: OEFENING_BG,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: OEFENING_BORDER,
+    marginBottom: 8,
+    height: CELL_H - 8,
+    overflow: "hidden",
+  },
+  oefeningItemDragging: {
+    opacity: 0.75,
+    borderStyle: "dashed",
+  },
+  oefeningItemBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  orderBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: OEFENING_BADGE_BG,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  orderText: { fontSize: 12, fontFamily: "Inter_700Bold", color: OEFENING_COLOR },
+  oefeningInfo: { flex: 1 },
+  oefeningText: { fontSize: 15, fontFamily: "Inter_500Medium", color: OEFENING_COLOR },
+  gripHandle: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.4)" },
   modalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+  },
+  actionSheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -470,6 +841,57 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelBtnText: { fontSize: 15, fontFamily: "Inter_500Medium", color: Colors.textSecondary },
-  saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center" },
+  saveBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 12,
+    backgroundColor: Colors.primary, alignItems: "center",
+  },
   saveBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: Colors.white },
+
+  actionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 14,
+  },
+  actionTitle: {
+    flex: 1, fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text,
+  },
+  statusRow: { marginBottom: 20 },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  statusBadgeGeleerd: { backgroundColor: "#3A2E14", borderColor: "#6A5020" },
+  statusBadgeOefening: { backgroundColor: OEFENING_BADGE_BG, borderColor: OEFENING_BORDER },
+  statusText: { fontSize: 13, fontFamily: "Inter_500Medium", color: Colors.textTertiary },
+  statusTextGeleerd: { color: Colors.primary },
+  statusTextOefening: { color: OEFENING_COLOR },
+  actionButtons: { gap: 10, marginBottom: 8 },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  actionBtnPressed: { opacity: 0.75 },
+  actionBtnOefening: { backgroundColor: OEFENING_BADGE_BG, borderColor: OEFENING_BORDER },
+  actionBtnGeleerd: { backgroundColor: "#3A2E14", borderColor: "#6A5020" },
+  actionBtnNeutral: { backgroundColor: Colors.surfaceSecondary, borderColor: Colors.borderLight },
+  actionBtnRemove: { backgroundColor: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.3)" },
+  actionBtnText: { fontSize: 15, fontFamily: "Inter_500Medium", flex: 1 },
+  actionBtnTextOefening: { color: OEFENING_COLOR },
+  actionBtnTextGeleerd: { color: Colors.primary },
+  actionBtnTextNeutral: { color: Colors.textSecondary },
+  actionBtnTextRemove: { color: Colors.error },
 });

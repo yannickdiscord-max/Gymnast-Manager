@@ -7,6 +7,7 @@ export interface Sporter {
   niveau: string;
   favoriet: boolean;
   onderdelen: Record<string, string[]>;
+  oefening: Record<string, string[]>; // ordered routine per toestel
 }
 
 export interface TurnOnderdeel {
@@ -180,19 +181,19 @@ export async function getSporters(): Promise<Sporter[]> {
 }
 
 function migrateSporter(s: any): Sporter {
+  const emptyToestellen = () => {
+    const r: Record<string, string[]> = {};
+    for (const t of TOESTELLEN) r[t] = [];
+    return r;
+  };
   if (Array.isArray(s.onderdelen)) {
-    const newOnderdelen: Record<string, string[]> = {};
-    for (const t of TOESTELLEN) {
-      newOnderdelen[t] = [];
-    }
-    return { ...s, onderdelen: newOnderdelen };
+    return { ...s, onderdelen: emptyToestellen(), oefening: emptyToestellen() };
   }
   if (!s.onderdelen || typeof s.onderdelen !== "object") {
-    const newOnderdelen: Record<string, string[]> = {};
-    for (const t of TOESTELLEN) {
-      newOnderdelen[t] = [];
-    }
-    return { ...s, onderdelen: newOnderdelen };
+    return { ...s, onderdelen: emptyToestellen(), oefening: emptyToestellen() };
+  }
+  if (!s.oefening || typeof s.oefening !== "object") {
+    return { ...s, oefening: emptyToestellen() };
   }
   return s;
 }
@@ -204,8 +205,10 @@ export async function saveSporters(sporters: Sporter[]): Promise<void> {
 export async function addSporter(naam: string, niveau: string): Promise<Sporter> {
   const sporters = await getSporters();
   const onderdelen: Record<string, string[]> = {};
+  const oefening: Record<string, string[]> = {};
   for (const t of TOESTELLEN) {
     onderdelen[t] = [];
+    oefening[t] = [];
   }
   const newSporter: Sporter = {
     id: Crypto.randomUUID(),
@@ -213,6 +216,7 @@ export async function addSporter(naam: string, niveau: string): Promise<Sporter>
     niveau,
     favoriet: false,
     onderdelen,
+    oefening,
   };
   sporters.push(newSporter);
   await saveSporters(sporters);
@@ -243,6 +247,20 @@ export async function updateSporterOnderdelen(
   const index = sporters.findIndex((s) => s.id === id);
   if (index !== -1) {
     sporters[index].onderdelen[toestel] = onderdelen;
+    await saveSporters(sporters);
+  }
+}
+
+export async function updateSporterOefening(
+  id: string,
+  toestel: Toestel,
+  oefening: string[]
+): Promise<void> {
+  const sporters = await getSporters();
+  const index = sporters.findIndex((s) => s.id === id);
+  if (index !== -1) {
+    if (!sporters[index].oefening) sporters[index].oefening = {};
+    sporters[index].oefening[toestel] = oefening;
     await saveSporters(sporters);
   }
 }

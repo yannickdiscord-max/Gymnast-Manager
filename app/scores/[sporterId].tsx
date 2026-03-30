@@ -10,7 +10,6 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
-  Alert,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -41,6 +40,8 @@ export default function ScoresScreen() {
   const [locatie, setLocatie] = useState("");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -113,27 +114,18 @@ export default function ScoresScreen() {
     router.push({ pathname: "/wedstrijd/[wedstrijdId]", params: { wedstrijdId: wedstrijd.id } });
   };
 
-  const handleDelete = async (id: string) => {
-    const doDelete = async () => {
-      await deleteWedstrijd(id);
-      setWedstrijden((prev) => prev.filter((w) => w.id !== id));
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    };
+  const handleDelete = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setConfirmDeleteId(id);
+  };
 
-    if (Platform.OS === "web") {
-      if (window.confirm("Weet je zeker dat je deze wedstrijd definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.")) {
-        await doDelete();
-      }
-    } else {
-      Alert.alert(
-        "Wedstrijd verwijderen",
-        "Weet je zeker dat je deze wedstrijd definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.",
-        [
-          { text: "Annuleren", style: "cancel" },
-          { text: "Verwijderen", style: "destructive", onPress: doDelete },
-        ]
-      );
-    }
+  const doConfirmedDelete = async () => {
+    if (!confirmDeleteId) return;
+    const id = confirmDeleteId;
+    setConfirmDeleteId(null);
+    await deleteWedstrijd(id);
+    setWedstrijden((prev) => prev.filter((w) => w.id !== id));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
   };
 
   const getTotaalScore = (wedstrijd: Wedstrijd) => {
@@ -186,7 +178,7 @@ export default function ScoresScreen() {
             <Text style={styles.ingevuldText}>{ingevuld}/{TOESTELLEN.length}</Text>
           )}
           <Pressable onPress={() => handleDelete(item.id)} hitSlop={8} testID={`delete-wedstrijd-${item.id}`}>
-            <Ionicons name="trash-outline" size={18} color={Colors.textTertiary} />
+            <Ionicons name="trash-outline" size={18} color={Colors.error} />
           </Pressable>
           <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
         </View>
@@ -236,6 +228,41 @@ export default function ScoresScreen() {
           <Text style={styles.addButtonText}>Wedstrijd toevoegen</Text>
         </Pressable>
       </View>
+
+      <Modal
+        visible={confirmDeleteId !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmDeleteId(null)}
+      >
+        <Pressable style={styles.confirmBackdrop} onPress={() => setConfirmDeleteId(null)}>
+          <Pressable style={styles.confirmDialog} onPress={() => {}}>
+            <View style={styles.confirmIconWrap}>
+              <Ionicons name="trash-outline" size={28} color={Colors.error} />
+            </View>
+            <Text style={styles.confirmTitle}>Wedstrijd verwijderen</Text>
+            <Text style={styles.confirmBody}>
+              Weet je zeker dat je deze wedstrijd definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.
+            </Text>
+            <View style={styles.confirmActions}>
+              <Pressable
+                style={styles.confirmCancelBtn}
+                onPress={() => setConfirmDeleteId(null)}
+                testID="confirm-cancel-btn"
+              >
+                <Text style={styles.confirmCancelText}>Annuleren</Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmDeleteBtn}
+                onPress={doConfirmedDelete}
+                testID="confirm-delete-btn"
+              >
+                <Text style={styles.confirmDeleteText}>Verwijderen</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={modalVisible}
@@ -399,6 +426,63 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderLight,
   },
   errorText: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.error, marginTop: 8 },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 32,
+  },
+  confirmDialog: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 24,
+    width: "100%",
+    alignItems: "center",
+  },
+  confirmIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "rgba(248,113,113,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.text,
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  confirmBody: {
+    fontSize: 14,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  confirmActions: { flexDirection: "row", gap: 12, width: "100%" },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+  },
+  confirmCancelText: { fontSize: 15, fontFamily: "Inter_500Medium", color: Colors.textSecondary },
+  confirmDeleteBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.error,
+    alignItems: "center",
+  },
+  confirmDeleteText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: Colors.white },
   modalActions: { flexDirection: "row", gap: 12, marginTop: 24 },
   cancelBtn: {
     flex: 1, paddingVertical: 14, borderRadius: 12,

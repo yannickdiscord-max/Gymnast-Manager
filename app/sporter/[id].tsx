@@ -117,7 +117,7 @@ export default function SporterScreen() {
       <View style={[styles.container, styles.center, { paddingTop: insets.top + webTopInset }]}>
         <Ionicons name="alert-circle-outline" size={48} color={Colors.textTertiary} />
         <Text style={styles.errorTitle}>Sporter niet gevonden</Text>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={() => router.push("/")}>
           <Text style={styles.backLink}>Terug naar overzicht</Text>
         </Pressable>
       </View>
@@ -127,7 +127,7 @@ export default function SporterScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} testID="back-btn">
+        <Pressable onPress={() => router.push("/")} hitSlop={12} testID="back-btn">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
 

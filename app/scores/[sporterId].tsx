@@ -157,7 +157,7 @@ export default function ScoresScreen() {
     return TOESTELLEN.reduce((sum, t) => {
       const s = wedstrijd.scores[t];
       if (!s) return sum;
-      return sum + s.dScore + s.eScore - s.penalty;
+      return sum + Math.max(0, s.dScore + s.eScore - s.penalty);
     }, 0);
   };
 

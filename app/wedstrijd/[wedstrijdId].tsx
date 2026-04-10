@@ -82,7 +82,7 @@ export default function WedstrijdScreen() {
     const s = scores[toestel];
     if (!s) return null;
     if (s.dScore === "" && s.eScore === "" && s.penalty === "") return null;
-    return parseScore(s.dScore) + parseScore(s.eScore) - parseScore(s.penalty);
+    return Math.max(0, parseScore(s.dScore) + parseScore(s.eScore) - parseScore(s.penalty));
   };
 
   const handleSave = async () => {
@@ -107,9 +107,8 @@ export default function WedstrijdScreen() {
 
   const grandTotal = (): number => {
     return TOESTELLEN.reduce((sum, t) => {
-      const s = scores[t];
-      if (!s || (s.dScore === "" && s.eScore === "" && s.penalty === "")) return sum;
-      return sum + parseScore(s.dScore) + parseScore(s.eScore) - parseScore(s.penalty);
+      const total = calcTotal(t);
+      return total !== null ? sum + total : sum;
     }, 0);
   };
 

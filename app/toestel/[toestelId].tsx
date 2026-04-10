@@ -461,13 +461,7 @@ export default function ToestelScreen() {
                 );
               })}
             </ScrollView>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-              style={styles.filterScroll}
-              scrollEnabled={true}
-            >
+            <View style={styles.filterRowCentered}>
               {ELEMENTGROEPEN.map((eg) => {
                 const isActive = activeElementgroepFilter === eg;
                 return (
@@ -486,7 +480,7 @@ export default function ToestelScreen() {
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </View>
           </>
         }
         ListEmptyComponent={
@@ -735,6 +729,13 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text },
   filterScroll: { flexGrow: 0, marginBottom: 12 },
   filterRow: { paddingHorizontal: 20, gap: 8 },
+  filterRowCentered: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
   filterChip: {
     paddingHorizontal: 18,
     paddingVertical: 10,

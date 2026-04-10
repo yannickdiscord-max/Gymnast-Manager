@@ -13,10 +13,17 @@ export interface Sporter {
 export interface TurnOnderdeel {
   naam: string;
   niveau: TurnOnderdeelNiveau;
+  elementgroep: 1 | 2 | 3 | 4;
 }
 
 export const TURN_ONDERDEEL_NIVEAUS = ["tA", "A", "B", "C", "D", "E"] as const;
 export type TurnOnderdeelNiveau = (typeof TURN_ONDERDEEL_NIVEAUS)[number];
+
+export const ELEMENTGROEPEN = [1, 2, 3, 4] as const;
+export type Elementgroep = 1 | 2 | 3 | 4;
+export const ELEMENTGROEP_ROMAN: Record<1 | 2 | 3 | 4, string> = {
+  1: "I", 2: "II", 3: "III", 4: "IV",
+};
 
 const SPORTERS_KEY = "turnteam_sporters";
 
@@ -33,78 +40,78 @@ export type Toestel = (typeof TOESTELLEN)[number];
 
 export const ONDERDELEN_PER_TOESTEL: Record<Toestel, TurnOnderdeel[]> = {
   Vloer: [
-    { naam: "Koprol voorwaarts", niveau: "tA" },
-    { naam: "Koprol achterwaarts", niveau: "tA" },
-    { naam: "Handstand", niveau: "tA" },
-    { naam: "Rad", niveau: "A" },
-    { naam: "Radslag", niveau: "A" },
-    { naam: "Rondat", niveau: "A" },
-    { naam: "Overslag", niveau: "B" },
-    { naam: "Flikflak", niveau: "B" },
-    { naam: "Arabier", niveau: "C" },
-    { naam: "Salto voorwaarts", niveau: "C" },
-    { naam: "Salto achterwaarts", niveau: "D" },
-    { naam: "Schroef", niveau: "E" },
+    { naam: "Koprol voorwaarts", niveau: "tA", elementgroep: 1 },
+    { naam: "Koprol achterwaarts", niveau: "tA", elementgroep: 1 },
+    { naam: "Handstand", niveau: "tA", elementgroep: 2 },
+    { naam: "Rad", niveau: "A", elementgroep: 1 },
+    { naam: "Radslag", niveau: "A", elementgroep: 1 },
+    { naam: "Rondat", niveau: "A", elementgroep: 1 },
+    { naam: "Overslag", niveau: "B", elementgroep: 2 },
+    { naam: "Flikflak", niveau: "B", elementgroep: 1 },
+    { naam: "Arabier", niveau: "C", elementgroep: 1 },
+    { naam: "Salto voorwaarts", niveau: "C", elementgroep: 1 },
+    { naam: "Salto achterwaarts", niveau: "D", elementgroep: 1 },
+    { naam: "Schroef", niveau: "E", elementgroep: 1 },
   ],
   Voltige: [
-    { naam: "Opsprong", niveau: "tA" },
-    { naam: "Afsprong", niveau: "tA" },
-    { naam: "Hurksprong", niveau: "A" },
-    { naam: "Streeksprong", niveau: "A" },
-    { naam: "Gratssprong", niveau: "B" },
-    { naam: "Handspring", niveau: "B" },
-    { naam: "Overslag", niveau: "C" },
-    { naam: "Yamashita", niveau: "C" },
-    { naam: "Tsukahara", niveau: "D" },
-    { naam: "Salto voorwaarts", niveau: "E" },
+    { naam: "Opsprong", niveau: "tA", elementgroep: 1 },
+    { naam: "Afsprong", niveau: "tA", elementgroep: 4 },
+    { naam: "Hurksprong", niveau: "A", elementgroep: 1 },
+    { naam: "Streeksprong", niveau: "A", elementgroep: 1 },
+    { naam: "Gratssprong", niveau: "B", elementgroep: 2 },
+    { naam: "Handspring", niveau: "B", elementgroep: 1 },
+    { naam: "Overslag", niveau: "C", elementgroep: 1 },
+    { naam: "Yamashita", niveau: "C", elementgroep: 2 },
+    { naam: "Tsukahara", niveau: "D", elementgroep: 3 },
+    { naam: "Salto voorwaarts", niveau: "E", elementgroep: 4 },
   ],
   Ringen: [
-    { naam: "Hang", niveau: "tA" },
-    { naam: "Steun", niveau: "tA" },
-    { naam: "Schommel", niveau: "A" },
-    { naam: "Hoek", niveau: "A" },
-    { naam: "Spierbal", niveau: "B" },
-    { naam: "Kipstand", niveau: "B" },
-    { naam: "Steunzwaaien", niveau: "C" },
-    { naam: "Kruis", niveau: "C" },
-    { naam: "Hefwenteling", niveau: "D" },
-    { naam: "Afzwaai", niveau: "E" },
+    { naam: "Hang", niveau: "tA", elementgroep: 1 },
+    { naam: "Steun", niveau: "tA", elementgroep: 2 },
+    { naam: "Schommel", niveau: "A", elementgroep: 1 },
+    { naam: "Hoek", niveau: "A", elementgroep: 2 },
+    { naam: "Spierbal", niveau: "B", elementgroep: 2 },
+    { naam: "Kipstand", niveau: "B", elementgroep: 3 },
+    { naam: "Steunzwaaien", niveau: "C", elementgroep: 1 },
+    { naam: "Kruis", niveau: "C", elementgroep: 2 },
+    { naam: "Hefwenteling", niveau: "D", elementgroep: 3 },
+    { naam: "Afzwaai", niveau: "E", elementgroep: 4 },
   ],
   Sprong: [
-    { naam: "Hurksprong", niveau: "tA" },
-    { naam: "Streeksprong", niveau: "tA" },
-    { naam: "Gratssprong", niveau: "A" },
-    { naam: "Handspring", niveau: "A" },
-    { naam: "Overslag", niveau: "B" },
-    { naam: "Yamashita", niveau: "B" },
-    { naam: "Tsukahara", niveau: "C" },
-    { naam: "Salto voorwaarts", niveau: "C" },
-    { naam: "Schroefsprong", niveau: "D" },
-    { naam: "Rondat afsprong", niveau: "E" },
+    { naam: "Hurksprong", niveau: "tA", elementgroep: 1 },
+    { naam: "Streeksprong", niveau: "tA", elementgroep: 1 },
+    { naam: "Gratssprong", niveau: "A", elementgroep: 2 },
+    { naam: "Handspring", niveau: "A", elementgroep: 1 },
+    { naam: "Overslag", niveau: "B", elementgroep: 1 },
+    { naam: "Yamashita", niveau: "B", elementgroep: 2 },
+    { naam: "Tsukahara", niveau: "C", elementgroep: 3 },
+    { naam: "Salto voorwaarts", niveau: "C", elementgroep: 4 },
+    { naam: "Schroefsprong", niveau: "D", elementgroep: 4 },
+    { naam: "Rondat afsprong", niveau: "E", elementgroep: 4 },
   ],
   Brug: [
-    { naam: "Steunzwaaien", niveau: "tA" },
-    { naam: "Wende", niveau: "tA" },
-    { naam: "Kehre", niveau: "A" },
-    { naam: "Draai", niveau: "A" },
-    { naam: "Kiep", niveau: "B" },
-    { naam: "Kip", niveau: "B" },
-    { naam: "Felg", niveau: "C" },
-    { naam: "Hefwenteling", niveau: "C" },
-    { naam: "Diamidov", niveau: "D" },
-    { naam: "Afzwaai", niveau: "E" },
+    { naam: "Steunzwaaien", niveau: "tA", elementgroep: 1 },
+    { naam: "Wende", niveau: "tA", elementgroep: 2 },
+    { naam: "Kehre", niveau: "A", elementgroep: 2 },
+    { naam: "Draai", niveau: "A", elementgroep: 2 },
+    { naam: "Kiep", niveau: "B", elementgroep: 3 },
+    { naam: "Kip", niveau: "B", elementgroep: 3 },
+    { naam: "Felg", niveau: "C", elementgroep: 3 },
+    { naam: "Hefwenteling", niveau: "C", elementgroep: 3 },
+    { naam: "Diamidov", niveau: "D", elementgroep: 2 },
+    { naam: "Afzwaai", niveau: "E", elementgroep: 4 },
   ],
   Rekstok: [
-    { naam: "Zweefhang", niveau: "tA" },
-    { naam: "Steunzwaaien", niveau: "tA" },
-    { naam: "Kiep", niveau: "A" },
-    { naam: "Felg", niveau: "A" },
-    { naam: "Reuzendraaien", niveau: "B" },
-    { naam: "Staldergrep", niveau: "C" },
-    { naam: "Adlerslag", niveau: "C" },
-    { naam: "Tkatchev", niveau: "D" },
-    { naam: "Afsprong salto", niveau: "D" },
-    { naam: "Afsprong schroef", niveau: "E" },
+    { naam: "Zweefhang", niveau: "tA", elementgroep: 1 },
+    { naam: "Steunzwaaien", niveau: "tA", elementgroep: 1 },
+    { naam: "Kiep", niveau: "A", elementgroep: 3 },
+    { naam: "Felg", niveau: "A", elementgroep: 3 },
+    { naam: "Reuzendraaien", niveau: "B", elementgroep: 1 },
+    { naam: "Staldergrep", niveau: "C", elementgroep: 1 },
+    { naam: "Adlerslag", niveau: "C", elementgroep: 1 },
+    { naam: "Tkatchev", niveau: "D", elementgroep: 1 },
+    { naam: "Afsprong salto", niveau: "D", elementgroep: 4 },
+    { naam: "Afsprong schroef", niveau: "E", elementgroep: 4 },
   ],
 };
 
@@ -145,6 +152,18 @@ export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> 
   if (!parsed[toestel]) {
     parsed[toestel] = [...ONDERDELEN_PER_TOESTEL[toestel]];
     await AsyncStorage.setItem(ONDERDELEN_KEY, JSON.stringify(parsed));
+  } else {
+    // Migrate: ensure every stored onderdeel has an elementgroep
+    let dirty = false;
+    parsed[toestel] = parsed[toestel].map((o) => {
+      if (o.elementgroep == null) {
+        dirty = true;
+        const defaultEntry = ONDERDELEN_PER_TOESTEL[toestel].find((d) => d.naam === o.naam);
+        return { ...o, elementgroep: defaultEntry?.elementgroep ?? 1 };
+      }
+      return o;
+    });
+    if (dirty) await AsyncStorage.setItem(ONDERDELEN_KEY, JSON.stringify(parsed));
   }
   return sortOnderdelen(parsed[toestel]);
 }

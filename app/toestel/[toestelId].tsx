@@ -26,10 +26,13 @@ import {
   addOnderdeel,
   deleteOnderdeel,
   TURN_ONDERDEEL_NIVEAUS,
+  ELEMENTGROEPEN,
+  ELEMENTGROEP_ROMAN,
   type Sporter,
   type Toestel,
   type TurnOnderdeelNiveau,
   type TurnOnderdeel,
+  type Elementgroep,
 } from "@/lib/storage";
 
 const CELL_H = 64;
@@ -52,9 +55,12 @@ export default function ToestelScreen() {
 
   const [actionItem, setActionItem] = useState<TurnOnderdeel | null>(null);
 
+  const [activeElementgroepFilter, setActiveElementgroepFilter] = useState<Elementgroep | null>(null);
+
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newNaam, setNewNaam] = useState("");
   const [newNiveau, setNewNiveau] = useState<TurnOnderdeelNiveau>("A");
+  const [newElementgroep, setNewElementgroep] = useState<Elementgroep>(1);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -237,6 +243,7 @@ export default function ToestelScreen() {
   const handleOpenAddModal = () => {
     setNewNaam("");
     setNewNiveau("A");
+    setNewElementgroep(1);
     setErrorMsg("");
     setAddModalVisible(true);
   };
@@ -255,7 +262,7 @@ export default function ToestelScreen() {
       return;
     }
     setSaving(true);
-    await addOnderdeel(toestel, { naam: trimmed, niveau: newNiveau });
+    await addOnderdeel(toestel, { naam: trimmed, niveau: newNiveau, elementgroep: newElementgroep });
     const updated = await getOnderdelen(toestel);
     setOnderdelen(updated);
     setSaving(false);
@@ -311,6 +318,7 @@ export default function ToestelScreen() {
   const displayOnderdelen = onderdelen.filter((o) => {
     if (oefening.includes(o.naam)) return false;
     if (activeFilter && o.niveau !== activeFilter) return false;
+    if (activeElementgroepFilter && o.elementgroep !== activeElementgroepFilter) return false;
     return true;
   });
 
@@ -342,6 +350,11 @@ export default function ToestelScreen() {
         <View style={[styles.niveauTag, getNiveauTagStyle(item.niveau)]}>
           <Text style={[styles.niveauTagText, getNiveauTagTextStyle(item.niveau)]}>
             {item.niveau}
+          </Text>
+        </View>
+        <View style={styles.elementgroepTag}>
+          <Text style={styles.elementgroepTagText}>
+            {ELEMENTGROEP_ROMAN[item.elementgroep ?? 1]}
           </Text>
         </View>
         <Pressable
@@ -448,14 +461,41 @@ export default function ToestelScreen() {
                 );
               })}
             </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+              style={styles.filterScroll}
+              scrollEnabled={true}
+            >
+              {ELEMENTGROEPEN.map((eg) => {
+                const isActive = activeElementgroepFilter === eg;
+                return (
+                  <Pressable
+                    key={eg}
+                    style={[styles.filterChip, styles.filterChipEg, isActive && styles.filterChipEgActive]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setActiveElementgroepFilter((prev) => (prev === eg ? null : eg));
+                    }}
+                    testID={`filter-eg-${eg}`}
+                  >
+                    <Text style={[styles.filterChipText, isActive && styles.filterChipEgTextActive]}>
+                      {ELEMENTGROEP_ROMAN[eg]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </>
         }
         ListEmptyComponent={
-          activeFilter ? (
+          activeFilter || activeElementgroepFilter ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="fitness-outline" size={40} color={Colors.textTertiary} />
               <Text style={styles.emptyText}>
-                Geen onderdelen voor niveau {activeFilter}
+                Geen onderdelen{activeFilter ? ` voor niveau ${activeFilter}` : ""}
+                {activeElementgroepFilter ? ` in groep ${ELEMENTGROEP_ROMAN[activeElementgroepFilter]}` : ""}
               </Text>
             </View>
           ) : null
@@ -614,6 +654,22 @@ export default function ToestelScreen() {
               ))}
             </View>
 
+            <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Elementgroep</Text>
+            <View style={styles.niveauRow}>
+              {ELEMENTGROEPEN.map((eg) => (
+                <Pressable
+                  key={eg}
+                  style={[styles.niveauOption, newElementgroep === eg && styles.niveauOptionEgActive]}
+                  onPress={() => setNewElementgroep(eg)}
+                  testID={`select-eg-${eg}`}
+                >
+                  <Text style={[styles.niveauOptionText, newElementgroep === eg && styles.niveauOptionEgTextActive]}>
+                    {eg}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
             <View style={styles.modalActions}>
               <Pressable
                 style={styles.cancelBtn}
@@ -709,6 +765,20 @@ const styles = StyleSheet.create({
   onderdeelTextSelected: { fontFamily: "Inter_500Medium", color: Colors.primaryDark },
   niveauTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
   niveauTagText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  elementgroepTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: "#252035",
+    borderColor: "#3A2A55",
+  },
+  elementgroepTagText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#B090E0" },
+  filterChipEg: { backgroundColor: "#252035", borderColor: "#3A2A55" },
+  filterChipEgActive: { backgroundColor: "#6030A0", borderColor: "#6030A0" },
+  filterChipEgTextActive: { color: Colors.white },
+  niveauOptionEgActive: { backgroundColor: "#6030A0", borderColor: "#6030A0" },
+  niveauOptionEgTextActive: { color: Colors.white },
   emptyContainer: { alignItems: "center", paddingTop: 60, gap: 8 },
   emptyText: {
     fontSize: 15, fontFamily: "Inter_400Regular",

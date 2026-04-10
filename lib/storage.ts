@@ -411,10 +411,19 @@ export function calculateDWaarde(
   selectedNamen: string[],
   allOnderdelen: TurnOnderdeel[]
 ): number {
-  return selectedNamen.reduce((sum, naam) => {
-    const found = allOnderdelen.find((o) => o.naam === naam);
-    return sum + (found ? (DWAARDE_PER_NIVEAU[found.niveau] ?? 0) : 0);
-  }, 0);
+  const oefeningItems = selectedNamen
+    .map((naam) => allOnderdelen.find((o) => o.naam === naam))
+    .filter((o): o is TurnOnderdeel => o !== undefined);
+
+  const niveauScore = oefeningItems.reduce(
+    (sum, o) => sum + (DWAARDE_PER_NIVEAU[o.niveau] ?? 0),
+    0
+  );
+
+  const presentGroepen = new Set(oefeningItems.map((o) => o.elementgroep ?? 1));
+  const elementgroepBonus = presentGroepen.size * 0.5;
+
+  return niveauScore + elementgroepBonus;
 }
 
 export const NIVEAUS = [

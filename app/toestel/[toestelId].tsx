@@ -404,6 +404,11 @@ export default function ToestelScreen() {
                     {item.niveau}
                   </Text>
                 </View>
+                <View style={styles.elementgroepTag}>
+                  <Text style={styles.elementgroepTagText}>
+                    {ELEMENTGROEP_ROMAN[item.elementgroep ?? 1]}
+                  </Text>
+                </View>
               </Pressable>
               <View {...getPanHandlers(naam)} style={styles.gripHandle}>
                 <Ionicons name="reorder-three-outline" size={24} color={OEFENING_COLOR} />

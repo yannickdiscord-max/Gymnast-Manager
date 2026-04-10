@@ -168,7 +168,8 @@ export default function SporterScreen() {
           const progress = Math.min(selected / minimum, 1);
           const isComplete = selected >= minimum;
           const allOnderdelen = onderdelenMap[toestel] || [];
-          const dWaarde = calculateDWaarde(selectedNamen, allOnderdelen);
+          const oefeningNamen = sporter.oefening?.[toestel] || [];
+          const dWaarde = calculateDWaarde(oefeningNamen, allOnderdelen);
 
           return (
             <Pressable

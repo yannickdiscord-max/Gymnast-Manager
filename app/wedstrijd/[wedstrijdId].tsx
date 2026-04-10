@@ -63,6 +63,10 @@ export default function WedstrijdScreen() {
 
   const handleChange = (toestel: string, field: "dScore" | "eScore" | "penalty", value: string) => {
     setSaved(false);
+    if (field === "eScore") {
+      const parsed = parseFloat(value.replace(",", "."));
+      if (!isNaN(parsed) && parsed > 10) value = "10";
+    }
     setScores((prev) => ({
       ...prev,
       [toestel]: { ...prev[toestel], [field]: value },
@@ -90,7 +94,7 @@ export default function WedstrijdScreen() {
       if (s && (s.dScore !== "" || s.eScore !== "" || s.penalty !== "")) {
         toSave[t] = {
           dScore: parseScore(s.dScore),
-          eScore: parseScore(s.eScore),
+          eScore: Math.min(10, parseScore(s.eScore)),
           penalty: parseScore(s.penalty),
         };
       }

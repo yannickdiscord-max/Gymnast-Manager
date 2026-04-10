@@ -21,6 +21,7 @@ import {
   getWedstrijden,
   addWedstrijd,
   deleteWedstrijd,
+  getLastWedstrijdFromOtherSporters,
   TOESTELLEN,
   type Sporter,
   type Wedstrijd,
@@ -42,6 +43,7 @@ export default function ScoresScreen() {
   const [errorMsg, setErrorMsg] = useState("");
 
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [lastOtherWedstrijd, setLastOtherWedstrijd] = useState<Wedstrijd | null>(null);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -55,12 +57,14 @@ export default function ScoresScreen() {
   const loadData = async () => {
     if (!sporterId) return;
     setLoading(true);
-    const [sporterData, wedstrijdenData] = await Promise.all([
+    const [sporterData, wedstrijdenData, lastOther] = await Promise.all([
       getSporter(sporterId),
       getWedstrijden(sporterId),
+      getLastWedstrijdFromOtherSporters(sporterId),
     ]);
     setSporter(sporterData || null);
     setWedstrijden(wedstrijdenData);
+    setLastOtherWedstrijd(lastOther || null);
     setLoading(false);
   };
 
@@ -126,6 +130,27 @@ export default function ScoresScreen() {
     await deleteWedstrijd(id);
     setWedstrijden((prev) => prev.filter((w) => w.id !== id));
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  };
+
+  const handleZelfdeWedstrijd = async () => {
+    if (!lastOtherWedstrijd || !sporterId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { naam: n, datum: d, locatie: l } = lastOtherWedstrijd;
+    const wedstrijd = await addWedstrijd(sporterId, n, d, l);
+    setWedstrijden((prev) =>
+      [...prev, wedstrijd].sort((a, b) => {
+        const parse = (dt: string) => {
+          const [dd, mm, yyyy] = dt.split("-").map(Number);
+          return new Date(yyyy, mm - 1, dd).getTime();
+        };
+        return parse(b.datum) - parse(a.datum);
+      })
+    );
+    // Refresh lastOtherWedstrijd in case it changed
+    const updated = await getLastWedstrijdFromOtherSporters(sporterId);
+    setLastOtherWedstrijd(updated || null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.push({ pathname: "/wedstrijd/[wedstrijdId]", params: { wedstrijdId: wedstrijd.id } });
   };
 
   const getTotaalScore = (wedstrijd: Wedstrijd) => {
@@ -203,35 +228,71 @@ export default function ScoresScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <FlatList
-        data={wedstrijden}
-        keyExtractor={(item) => item.id}
-        renderItem={renderWedstrijd}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingBottom: insets.bottom + webBottomInset + 100 },
-        ]}
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={true}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Ionicons name="trophy-outline" size={48} color={Colors.textTertiary} />
-            <Text style={styles.emptyTitle}>Geen wedstrijden</Text>
-            <Text style={styles.emptyText}>Voeg de eerste wedstrijd toe</Text>
-          </View>
-        }
-      />
+      {(() => {
+        const alreadyHasSame = lastOtherWedstrijd
+          ? wedstrijden.some(
+              (w) =>
+                w.naam === lastOtherWedstrijd.naam &&
+                w.datum === lastOtherWedstrijd.datum &&
+                w.locatie === lastOtherWedstrijd.locatie
+            )
+          : false;
+        const showZelfde = !!lastOtherWedstrijd && !alreadyHasSame;
+        const footerHeight = showZelfde ? 148 : 84;
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
-        <Pressable
-          style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
-          onPress={handleOpenModal}
-          testID="add-wedstrijd-btn"
-        >
-          <Ionicons name="add" size={22} color={Colors.white} />
-          <Text style={styles.addButtonText}>Wedstrijd toevoegen</Text>
-        </Pressable>
-      </View>
+        return (
+          <>
+            <FlatList
+              data={wedstrijden}
+              keyExtractor={(item) => item.id}
+              renderItem={renderWedstrijd}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: insets.bottom + webBottomInset + footerHeight },
+              ]}
+              showsVerticalScrollIndicator={false}
+              scrollEnabled={true}
+              ListEmptyComponent={
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="trophy-outline" size={48} color={Colors.textTertiary} />
+                  <Text style={styles.emptyTitle}>Geen wedstrijden</Text>
+                  <Text style={styles.emptyText}>Voeg de eerste wedstrijd toe</Text>
+                </View>
+              }
+            />
+
+            <View style={[styles.footer, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
+              {showZelfde && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.zelfdeButton,
+                    pressed && styles.zelfdeButtonPressed,
+                  ]}
+                  onPress={handleZelfdeWedstrijd}
+                  testID="zelfde-wedstrijd-btn"
+                >
+                  <Ionicons name="copy-outline" size={20} color={Colors.primary} />
+                  <View style={styles.zelfdeButtonCenter}>
+                    <Text style={styles.zelfdeButtonText}>Zelfde wedstrijd</Text>
+                    <Text style={styles.zelfdeButtonSub} numberOfLines={1}>
+                      {lastOtherWedstrijd!.naam} · {lastOtherWedstrijd!.datum}
+                    </Text>
+                  </View>
+                  <Ionicons name="arrow-forward" size={16} color={Colors.primary} />
+                </Pressable>
+              )}
+              <Pressable
+                style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+                onPress={handleOpenModal}
+                testID="add-wedstrijd-btn"
+              >
+                <Ionicons name="add" size={22} color={Colors.white} />
+                <Text style={styles.addButtonText}>Wedstrijd toevoegen</Text>
+              </Pressable>
+            </View>
+          </>
+        );
+      })()}
 
       <Modal
         visible={confirmDeleteId !== null}
@@ -403,6 +464,22 @@ const styles = StyleSheet.create({
   },
   addButtonPressed: { backgroundColor: Colors.primaryDark, transform: [{ scale: 0.98 }] },
   addButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.white },
+  zelfdeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  zelfdeButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
+  zelfdeButtonCenter: { flex: 1 },
+  zelfdeButtonText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: Colors.primary },
+  zelfdeButtonSub: { fontSize: 12, fontFamily: "Inter_400Regular", color: Colors.textTertiary, marginTop: 2 },
   modalOverlay: { flex: 1, justifyContent: "flex-end" },
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
   modalSheet: {

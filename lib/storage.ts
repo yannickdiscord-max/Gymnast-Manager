@@ -299,6 +299,19 @@ export interface Wedstrijd {
 
 const WEDSTRIJDEN_KEY = "turnteam_wedstrijden";
 
+export async function getLastWedstrijdFromOtherSporters(
+  sporterId: string
+): Promise<Wedstrijd | undefined> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return undefined;
+  const all: Wedstrijd[] = JSON.parse(data);
+  // Traverse in reverse (newest push = last in array) to find most recent from another sporter
+  for (let i = all.length - 1; i >= 0; i--) {
+    if (all[i].sporterId !== sporterId) return all[i];
+  }
+  return undefined;
+}
+
 export async function getWedstrijden(sporterId: string): Promise<Wedstrijd[]> {
   const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
   if (!data) return [];

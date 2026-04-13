@@ -22,9 +22,12 @@ import {
   addWedstrijd,
   deleteWedstrijd,
   getLastWedstrijdFromOtherSporters,
+  getOnderdelen,
+  calculateDWaarde,
   TOESTELLEN,
   type Sporter,
   type Wedstrijd,
+  type Toestel,
 } from "@/lib/storage";
 
 export default function ScoresScreen() {
@@ -66,6 +69,24 @@ export default function ScoresScreen() {
     setWedstrijden(wedstrijdenData);
     setLastOtherWedstrijd(lastOther || null);
     setLoading(false);
+  };
+
+  const snapshotDWaarde = async (sp: Sporter | null): Promise<Record<string, number | null>> => {
+    const snapshot: Record<string, number | null> = {};
+    if (!sp) {
+      for (const t of TOESTELLEN) snapshot[t] = null;
+      return snapshot;
+    }
+    for (const t of TOESTELLEN) {
+      const namen = sp.oefening?.[t] ?? [];
+      if (namen.length === 0) {
+        snapshot[t] = null;
+      } else {
+        const onderdelen = await getOnderdelen(t as Toestel);
+        snapshot[t] = calculateDWaarde(namen, onderdelen);
+      }
+    }
+    return snapshot;
   };
 
   const handleOpenModal = () => {

@@ -305,6 +305,7 @@ export interface ToestelScore {
   dScore: number;
   eScore: number;
   penalty: number;
+  dScoreNote?: string;
   eScoreNote?: string;
   penaltyNote?: string;
 }
@@ -316,6 +317,7 @@ export interface Wedstrijd {
   datum: string;
   locatie: string;
   scores: Record<string, ToestelScore>;
+  expectedDWaarde?: Record<string, number | null>;
 }
 
 const WEDSTRIJDEN_KEY = "turnteam_wedstrijden";
@@ -359,7 +361,8 @@ export async function addWedstrijd(
   sporterId: string,
   naam: string,
   datum: string,
-  locatie: string
+  locatie: string,
+  expectedDWaarde?: Record<string, number | null>
 ): Promise<Wedstrijd> {
   const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
   const all: Wedstrijd[] = data ? JSON.parse(data) : [];
@@ -370,6 +373,7 @@ export async function addWedstrijd(
     datum,
     locatie,
     scores: {},
+    expectedDWaarde: expectedDWaarde ?? {},
   };
   all.push(newWedstrijd);
   await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
@@ -393,6 +397,7 @@ export async function saveWedstrijdScores(
 export async function saveToestelNotes(
   wedstrijdId: string,
   toestel: string,
+  dScoreNote: string,
   eScoreNote: string,
   penaltyNote: string
 ): Promise<void> {
@@ -402,7 +407,23 @@ export async function saveToestelNotes(
   const index = all.findIndex((w) => w.id === wedstrijdId);
   if (index !== -1) {
     const existing = all[index].scores[toestel] ?? { dScore: 0, eScore: 0, penalty: 0 };
-    all[index].scores[toestel] = { ...existing, eScoreNote, penaltyNote };
+    all[index].scores[toestel] = { ...existing, dScoreNote, eScoreNote, penaltyNote };
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+  }
+}
+
+export async function saveExpectedDWaarde(
+  wedstrijdId: string,
+  toestel: string,
+  value: number | null
+): Promise<void> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return;
+  const all: Wedstrijd[] = JSON.parse(data);
+  const index = all.findIndex((w) => w.id === wedstrijdId);
+  if (index !== -1) {
+    if (!all[index].expectedDWaarde) all[index].expectedDWaarde = {};
+    all[index].expectedDWaarde![toestel] = value;
     await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
   }
 }

@@ -536,6 +536,11 @@ export default function ToestelScreen() {
                     {actionItem.niveau}
                   </Text>
                 </View>
+                <View style={styles.elementgroepTag}>
+                  <Text style={styles.elementgroepTagText}>
+                    {ELEMENTGROEP_ROMAN[actionItem.elementgroep ?? 1]}
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.statusRow}>

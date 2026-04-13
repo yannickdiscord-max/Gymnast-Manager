@@ -4,6 +4,7 @@
     "slug": "turnteam",
     "version": "1.0.0",
     "orientation": "portrait",
+    "backgroundColor": "#3A3A3A",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
@@ -19,6 +20,14 @@
     },
     "android": {
       "package": "com.myapp",
+      "statusBar": {
+        "backgroundColor": "#3A3A3A",
+        "barStyle": "light-content"
+      },
+      "navigationBar": {
+        "backgroundColor": "#3A3A3A",
+        "barStyle": "light-content"
+      },
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

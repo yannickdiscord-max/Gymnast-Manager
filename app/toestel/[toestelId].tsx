@@ -11,6 +11,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   PanResponder,
+  Alert,
 } from "react-native";
 import { ScrollView } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -294,6 +295,33 @@ export default function ToestelScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
+  const handleDeletePress = (naam: string) => {
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        `Weet je zeker dat je "${naam}" wilt verwijderen?`
+      );
+      if (confirmed) {
+        void handleDelete(naam);
+      }
+      return;
+    }
+
+    Alert.alert(
+      "Onderdeel verwijderen",
+      `Weet je zeker dat je "${naam}" wilt verwijderen?`,
+      [
+        { text: "Annuleren", style: "cancel" },
+        {
+          text: "Verwijderen",
+          style: "destructive",
+          onPress: () => {
+            void handleDelete(naam);
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top + webTopInset }]}>
@@ -359,7 +387,7 @@ export default function ToestelScreen() {
           </Text>
         </View>
         <Pressable
-          onPress={() => handleDelete(item.naam)}
+          onPress={() => handleDeletePress(item.naam)}
           hitSlop={8}
           testID={`delete-${item.naam}`}
         >

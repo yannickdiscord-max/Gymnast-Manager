@@ -63,9 +63,28 @@ export default function WedstrijdScreen() {
 
   const handleChange = (toestel: string, field: "dScore" | "eScore" | "penalty", value: string) => {
     setSaved(false);
+    if (field === "dScore") {
+      const normalized = value.replace(",", ".");
+      const oneDecimal = normalized.match(/^\d*(?:\.\d?)?/)?.[0] ?? "";
+      value = oneDecimal;
+    }
     if (field === "eScore") {
-      const parsed = parseFloat(value.replace(",", "."));
-      if (!isNaN(parsed) && parsed > 10) value = "10";
+      const normalized = value.replace(",", ".");
+      const oneDecimal = normalized.match(/^\d*(?:\.\d?)?/)?.[0] ?? "";
+      value = oneDecimal;
+      const parsed = parseFloat(normalized);
+      const hasDecimalSeparator = value.includes(".");
+      const onlyDigits = /^\d+$/.test(value);
+
+      // If a user types an integer above 10 (e.g. 26), treat it as one decimal (2.6).
+      if (!hasDecimalSeparator && onlyDigits && !isNaN(parsed) && parsed > 10) {
+        value = String(parsed / 10);
+      }
+
+      const capped = parseFloat(value);
+      if (!isNaN(capped) && capped > 10) {
+        value = "10";
+      }
     }
     setScores((prev) => ({
       ...prev,

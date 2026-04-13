@@ -15,12 +15,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
 import {
   getWedstrijd,
-  getSporter,
-  getOnderdelen,
   saveToestelNotes,
-  calculateDWaarde,
+  saveExpectedDWaarde,
   type Wedstrijd,
-  type Toestel,
 } from "@/lib/storage";
 
 export default function AnalyseScreen() {
@@ -31,7 +28,10 @@ export default function AnalyseScreen() {
   const insets = useSafeAreaInsets();
 
   const [wedstrijd, setWedstrijd] = useState<Wedstrijd | null>(null);
-  const [dWaarde, setDWaarde] = useState<number | null>(null);
+  const [expectedDWaarde, setExpectedDWaarde] = useState<number | null>(null);
+  const [editingExpected, setEditingExpected] = useState(false);
+  const [expectedInput, setExpectedInput] = useState("");
+  const [dScoreNote, setDScoreNote] = useState("");
   const [eScoreNote, setEScoreNote] = useState("");
   const [penaltyNote, setPenaltyNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -56,36 +56,52 @@ export default function AnalyseScreen() {
     setWedstrijd(w);
 
     const existing = w.scores[toestel];
+    setDScoreNote(existing?.dScoreNote ?? "");
     setEScoreNote(existing?.eScoreNote ?? "");
     setPenaltyNote(existing?.penaltyNote ?? "");
-
-    const sporter = await getSporter(w.sporterId);
-    if (sporter) {
-      const oefeningNamen = sporter.oefening?.[toestel] ?? [];
-      const onderdelen = await getOnderdelen(toestel as Toestel);
-      setDWaarde(calculateDWaarde(oefeningNamen, onderdelen));
-    }
+    const expected = w.expectedDWaarde?.[toestel] ?? null;
+    setExpectedDWaarde(expected);
+    setExpectedInput(expected !== null ? String(expected) : "");
+    setEditingExpected(false);
     setLoading(false);
   };
 
-  const scheduleSave = (newENote: string, newPNote: string) => {
+  const scheduleSave = (newDNote: string, newENote: string, newPNote: string) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       if (!wedstrijdId || !toestel) return;
       setSaving(true);
-      await saveToestelNotes(wedstrijdId, toestel, newENote, newPNote);
+      await saveToestelNotes(wedstrijdId, toestel, newDNote, newENote, newPNote);
       setSaving(false);
     }, 600);
   };
 
+  const handleDScoreNoteChange = (val: string) => {
+    setDScoreNote(val);
+    scheduleSave(val, eScoreNote, penaltyNote);
+  };
+
   const handleEScoreNoteChange = (val: string) => {
     setEScoreNote(val);
-    scheduleSave(val, penaltyNote);
+    scheduleSave(dScoreNote, val, penaltyNote);
   };
 
   const handlePenaltyNoteChange = (val: string) => {
     setPenaltyNote(val);
-    scheduleSave(eScoreNote, val);
+    scheduleSave(dScoreNote, eScoreNote, val);
+  };
+
+  const commitExpectedDWaarde = async () => {
+    if (!wedstrijdId || !toestel) return;
+    const normalized = expectedInput.trim().replace(",", ".");
+    const parsed = normalized.length ? parseFloat(normalized) : null;
+    const nextValue = parsed !== null && !isNaN(parsed) ? parsed : null;
+    setExpectedDWaarde(nextValue);
+    setExpectedInput(nextValue !== null ? String(nextValue) : "");
+    setEditingExpected(false);
+    setSaving(true);
+    await saveExpectedDWaarde(wedstrijdId, toestel, nextValue);
+    setSaving(false);
   };
 
   useEffect(() => {
@@ -125,7 +141,7 @@ export default function AnalyseScreen() {
   const eScored = score?.eScore ?? null;
   const penaltyScored = score?.penalty ?? null;
 
-  const dDiff = dScored !== null && dWaarde !== null ? dScored - dWaarde : null;
+  const dDiff = dScored !== null && expectedDWaarde !== null ? dScored - expectedDWaarde : null;
   const diffPositive = dDiff !== null && dDiff >= 0;
 
   return (
@@ -172,9 +188,26 @@ export default function AnalyseScreen() {
 
             <View style={styles.compareCol}>
               <Text style={styles.compareSubLabel}>Oefening D-waarde</Text>
-              <Text style={styles.compareValue}>
-                {dWaarde !== null ? dWaarde.toFixed(1) : "—"}
-              </Text>
+              {editingExpected ? (
+                <TextInput
+                  style={styles.expectedInput}
+                  value={expectedInput}
+                  onChangeText={setExpectedInput}
+                  onBlur={commitExpectedDWaarde}
+                  onSubmitEditing={commitExpectedDWaarde}
+                  placeholder="???"
+                  placeholderTextColor={Colors.textTertiary}
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  testID="expected-d-input"
+                />
+              ) : (
+                <Pressable onPress={() => setEditingExpected(true)} hitSlop={8} testID="expected-d-value">
+                  <Text style={styles.compareValue}>
+                    {expectedDWaarde !== null ? expectedDWaarde.toFixed(1) : "???"}
+                  </Text>
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -190,6 +223,18 @@ export default function AnalyseScreen() {
               </Text>
             </View>
           )}
+          <Text style={styles.noteLabel}>Notities</Text>
+          <TextInput
+            style={styles.noteInput}
+            value={dScoreNote}
+            onChangeText={handleDScoreNoteChange}
+            placeholder="Opmerkingen over D-waarde vergelijking"
+            placeholderTextColor={Colors.textTertiary}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+            testID="d-score-note"
+          />
         </View>
 
         {/* E-Score */}

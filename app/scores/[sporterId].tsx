@@ -123,7 +123,14 @@ export default function ScoresScreen() {
     if (!locatie.trim()) { setErrorMsg("Vul een locatie in"); return; }
 
     setSaving(true);
-    const wedstrijd = await addWedstrijd(sporterId!, naam.trim(), datum.trim(), locatie.trim());
+    const expectedSnapshot = await snapshotDWaarde(sporter);
+    const wedstrijd = await addWedstrijd(
+      sporterId!,
+      naam.trim(),
+      datum.trim(),
+      locatie.trim(),
+      expectedSnapshot
+    );
     setWedstrijden((prev) =>
       [...prev, wedstrijd].sort((a, b) => {
         const parse = (d: string) => {
@@ -157,7 +164,8 @@ export default function ScoresScreen() {
     if (!lastOtherWedstrijd || !sporterId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { naam: n, datum: d, locatie: l } = lastOtherWedstrijd;
-    const wedstrijd = await addWedstrijd(sporterId, n, d, l);
+    const expectedSnapshot = await snapshotDWaarde(sporter);
+    const wedstrijd = await addWedstrijd(sporterId, n, d, l, expectedSnapshot);
     setWedstrijden((prev) =>
       [...prev, wedstrijd].sort((a, b) => {
         const parse = (dt: string) => {

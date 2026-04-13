@@ -474,6 +474,5 @@ export const NIVEAUS = [
   "Jeugd 2",
   "Junior",
   "Senior",
-  "Selectie",
 ];
 

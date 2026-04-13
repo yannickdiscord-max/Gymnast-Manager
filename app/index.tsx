@@ -20,7 +20,7 @@ type FilterMode = "favorieten" | "alle";
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [sporters, setSporters] = useState<Sporter[]>([]);
-  const [filter, setFilter] = useState<FilterMode>("favorieten");
+  const [filter, setFilter] = useState<FilterMode>("alle");
   const [loading, setLoading] = useState(true);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -118,33 +118,6 @@ export default function HomeScreen() {
         <Pressable
           style={[
             styles.filterButton,
-            filter === "favorieten" && styles.filterButtonActive,
-          ]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setFilter("favorieten");
-          }}
-        >
-          <Ionicons
-            name="star"
-            size={16}
-            color={
-              filter === "favorieten" ? Colors.white : Colors.textSecondary
-            }
-          />
-          <Text
-            style={[
-              styles.filterText,
-              filter === "favorieten" && styles.filterTextActive,
-            ]}
-          >
-            Favorieten
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.filterButton,
             filter === "alle" && styles.filterButtonActive,
           ]}
           onPress={() => {
@@ -155,7 +128,9 @@ export default function HomeScreen() {
           <Ionicons
             name="people"
             size={16}
-            color={filter === "alle" ? Colors.white : Colors.textSecondary}
+            color={
+              filter === "alle" ? Colors.white : Colors.textSecondary
+            }
           />
           <Text
             style={[
@@ -164,6 +139,31 @@ export default function HomeScreen() {
             ]}
           >
             Alle Sporters
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.filterButton,
+            filter === "favorieten" && styles.filterButtonActive,
+          ]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setFilter("favorieten");
+          }}
+        >
+          <Ionicons
+            name="star"
+            size={16}
+            color={filter === "favorieten" ? Colors.white : Colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.filterText,
+              filter === "favorieten" && styles.filterTextActive,
+            ]}
+          >
+            Favorieten
           </Text>
         </Pressable>
       </View>

@@ -28,6 +28,7 @@ import {
   TURN_ONDERDEEL_NIVEAUS,
   ELEMENTGROEPEN,
   ELEMENTGROEP_ROMAN,
+  calculateDWaarde,
   type Sporter,
   type Toestel,
   type TurnOnderdeelNiveau,
@@ -368,9 +369,14 @@ export default function ToestelScreen() {
     );
   };
 
+  const oefeningDWaarde = calculateDWaarde(oefening, onderdelen);
+
   const OefeningSection = oefening.length > 0 ? (
     <View style={styles.oefeningSection}>
-      <Text style={styles.oefeningSectionTitle}>Oefening</Text>
+      <View style={styles.oefeningSectionHeader}>
+        <Text style={styles.oefeningSectionTitle}>Oefening</Text>
+        <Text style={styles.oefeningDWaarde}>D: {oefeningDWaarde.toFixed(1)}</Text>
+      </View>
       <View
         ref={containerRef}
         onLayout={() => {
@@ -805,13 +811,23 @@ const styles = StyleSheet.create({
   addButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.white },
 
   oefeningSection: { paddingHorizontal: 20, marginBottom: 16 },
+  oefeningSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
   oefeningSectionTitle: {
     fontSize: 12,
     fontFamily: "Inter_600SemiBold",
     color: OEFENING_COLOR,
     letterSpacing: 1,
     textTransform: "uppercase",
-    marginBottom: 8,
+  },
+  oefeningDWaarde: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+    color: OEFENING_COLOR,
   },
   oefeningItem: {
     flexDirection: "row",

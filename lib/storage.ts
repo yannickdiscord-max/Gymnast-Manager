@@ -305,6 +305,8 @@ export interface ToestelScore {
   dScore: number;
   eScore: number;
   penalty: number;
+  eScoreNote?: string;
+  penaltyNote?: string;
 }
 
 export interface Wedstrijd {
@@ -384,6 +386,23 @@ export async function saveWedstrijdScores(
   const index = all.findIndex((w) => w.id === id);
   if (index !== -1) {
     all[index].scores = scores;
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+  }
+}
+
+export async function saveToestelNotes(
+  wedstrijdId: string,
+  toestel: string,
+  eScoreNote: string,
+  penaltyNote: string
+): Promise<void> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return;
+  const all: Wedstrijd[] = JSON.parse(data);
+  const index = all.findIndex((w) => w.id === wedstrijdId);
+  if (index !== -1) {
+    const existing = all[index].scores[toestel] ?? { dScore: 0, eScore: 0, penalty: 0 };
+    all[index].scores[toestel] = { ...existing, eScoreNote, penaltyNote };
     await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
   }
 }

@@ -172,11 +172,27 @@ export default function WedstrijdScreen() {
             <View key={toestel} style={styles.toestelCard}>
               <View style={styles.toestelHeader}>
                 <Text style={styles.toestelNaam}>{toestel}</Text>
-                {total !== null && (
-                  <View style={styles.totalBadge}>
-                    <Text style={styles.totalBadgeText}>{total.toFixed(3)}</Text>
-                  </View>
-                )}
+                <View style={styles.toestelHeaderRight}>
+                  {total !== null && (
+                    <View style={styles.totalBadge}>
+                      <Text style={styles.totalBadgeText}>{total.toFixed(3)}</Text>
+                    </View>
+                  )}
+                  <Pressable
+                    style={({ pressed }) => [styles.analyseBtn, pressed && { opacity: 0.6 }]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      router.push({
+                        pathname: "/analyse/[wedstrijdId]",
+                        params: { wedstrijdId: wedstrijdId!, toestel },
+                      });
+                    }}
+                    hitSlop={8}
+                    testID={`analyse-${toestel}`}
+                  >
+                    <Ionicons name="chevron-forward" size={18} color={Colors.textSecondary} />
+                  </Pressable>
+                </View>
               </View>
 
               <View style={styles.scoreRow}>
@@ -287,6 +303,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   toestelNaam: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.text },
+  toestelHeaderRight: { flexDirection: "row", alignItems: "center", gap: 8 },
   totalBadge: {
     backgroundColor: Colors.surfaceSecondary,
     paddingHorizontal: 10,
@@ -294,6 +311,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   totalBadgeText: { fontSize: 14, fontFamily: "Inter_700Bold", color: Colors.primary },
+  analyseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
   scoreRow: { flexDirection: "row", gap: 10 },
   scoreField: { flex: 1 },
   scoreLabel: {

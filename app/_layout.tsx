@@ -19,6 +19,7 @@ function RootLayoutNav() {
       <Stack.Screen name="toestel/[toestelId]" />
       <Stack.Screen name="scores/[sporterId]" />
       <Stack.Screen name="wedstrijd/[wedstrijdId]" />
+      <Stack.Screen name="analyse/[wedstrijdId]" />
     </Stack>
   );
 }

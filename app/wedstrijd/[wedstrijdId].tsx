@@ -140,7 +140,16 @@ export default function WedstrijdScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} testID="back-btn">
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/scores/[sporterId]",
+              params: { sporterId: wedstrijd.sporterId },
+            })
+          }
+          hitSlop={12}
+          testID="back-btn"
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>

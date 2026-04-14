@@ -8,11 +8,14 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import Colors from "@/constants/colors";
 import {
   getWedstrijd,
@@ -31,6 +34,7 @@ export default function WedstrijdScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -131,6 +135,185 @@ export default function WedstrijdScreen() {
     }, 0);
   };
 
+  const formatScore = (value: string): string => {
+    if (value.trim() === "") return "0.000";
+    return parseScore(value).toFixed(3);
+  };
+
+  const escapeHtml = (value: string): string => {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  };
+
+  const buildPdfHtml = (): string => {
+    const rows = TOESTELLEN.map((toestel) => {
+      const current = scores[toestel] ?? { dScore: "", eScore: "", penalty: "" };
+      const total = calcTotal(toestel);
+      const expected = wedstrijd?.expectedDWaarde?.[toestel] ?? null;
+      const dValue = parseScore(current.dScore);
+      const dDiff = expected !== null ? dValue - expected : null;
+      const wedstrijdScore = wedstrijd?.scores[toestel];
+
+      const noteItems = [
+        wedstrijdScore?.dScoreNote ? `D-score: ${escapeHtml(wedstrijdScore.dScoreNote)}` : "",
+        wedstrijdScore?.eScoreNote ? `E-score: ${escapeHtml(wedstrijdScore.eScoreNote)}` : "",
+        wedstrijdScore?.penaltyNote ? `Penalty: ${escapeHtml(wedstrijdScore.penaltyNote)}` : "",
+      ].filter(Boolean);
+
+      const notesSection = noteItems.length
+        ? `<div class="notes"><strong>Notities:</strong><br/>${noteItems.join("<br/>")}</div>`
+        : "";
+
+      const dComparison = expected !== null
+        ? `${dValue.toFixed(3)} vs ${expected.toFixed(1)} (${dDiff! >= 0 ? "+" : ""}${dDiff!.toFixed(3)})`
+        : `${dValue.toFixed(3)} vs ???`;
+
+      return `
+        <tr>
+          <td>${escapeHtml(toestel)}</td>
+          <td>${formatScore(current.dScore)}</td>
+          <td>${formatScore(current.eScore)}</td>
+          <td>${formatScore(current.penalty)}</td>
+          <td>${total !== null ? total.toFixed(3) : "—"}</td>
+          <td>${dComparison}</td>
+        </tr>
+        ${noteItems.length ? `<tr><td colspan="6">${notesSection}</td></tr>` : ""}
+      `;
+    }).join("");
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+              color: #111827;
+              background: #f8fafc;
+              padding: 20px;
+            }
+            .headerCard {
+              background: #1f6ad9;
+              border-radius: 14px;
+              padding: 16px 18px;
+              color: #ffffff;
+              margin-bottom: 14px;
+            }
+            h1 {
+              font-size: 22px;
+              margin: 0 0 6px;
+              color: #ffffff;
+            }
+            .sub {
+              color: rgba(255, 255, 255, 0.88);
+              margin-bottom: 2px;
+              font-size: 13px;
+            }
+            .total {
+              margin-top: 10px;
+              font-size: 16px;
+              font-weight: 700;
+              color: #ffffff;
+            }
+            .tableCard {
+              background: #ffffff;
+              border: 1px solid #dbe4f0;
+              border-radius: 14px;
+              overflow: hidden;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 12px;
+            }
+            th, td {
+              border-bottom: 1px solid #e9eff7;
+              padding: 10px 8px;
+              text-align: left;
+              vertical-align: top;
+            }
+            th {
+              background: #ecf3ff;
+              color: #1f6ad9;
+              font-weight: 700;
+              font-size: 11px;
+              letter-spacing: 0.3px;
+              text-transform: uppercase;
+            }
+            tbody tr:nth-child(odd) td {
+              background: #fbfdff;
+            }
+            .notes {
+              margin-top: 2px;
+              white-space: pre-wrap;
+              color: #334155;
+              font-size: 11px;
+              background: #f1f6ff;
+              border: 1px solid #dbe8ff;
+              border-radius: 10px;
+              padding: 8px 10px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="headerCard">
+            <h1>${escapeHtml(wedstrijd?.naam ?? "Wedstrijd")}</h1>
+            <div class="sub">${escapeHtml(wedstrijd?.datum ?? "")} · ${escapeHtml(wedstrijd?.locatie ?? "")}</div>
+            <div class="total">Totaalscore: ${grandTotal().toFixed(3)}</div>
+          </div>
+          <div class="tableCard">
+            <table>
+              <thead>
+                <tr>
+                  <th>Toestel</th>
+                  <th>D-Score</th>
+                  <th>E-Score</th>
+                  <th>Penalty</th>
+                  <th>Totaal</th>
+                  <th>D-Score vergelijking</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const handleExportPdf = async () => {
+    if (!wedstrijd) return;
+    if (Platform.OS === "web") {
+      Alert.alert("Niet beschikbaar", "PDF exporteren en delen is alleen beschikbaar op iOS en Android.");
+      return;
+    }
+    try {
+      setExporting(true);
+      const html = buildPdfHtml();
+      const { uri } = await Print.printToFileAsync({ html });
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Alert.alert("Delen niet beschikbaar", "Delen wordt niet ondersteund op dit apparaat.");
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: "application/pdf",
+        dialogTitle: `Wedstrijdscores - ${wedstrijd.naam}`,
+        UTI: ".pdf",
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Export mislukt", "Er ging iets mis bij het exporteren van de PDF.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const anyScore = TOESTELLEN.some((t) => {
     const s = scores[t];
     return s && (s.dScore !== "" || s.eScore !== "" || s.penalty !== "");
@@ -175,7 +358,19 @@ export default function WedstrijdScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>{wedstrijd.naam}</Text>
           <Text style={styles.headerSub}>{wedstrijd.datum} · {wedstrijd.locatie}</Text>
         </View>
-        <View style={{ width: 24 }} />
+        <Pressable
+          style={({ pressed }) => [styles.exportBtn, pressed && { opacity: 0.6 }]}
+          onPress={handleExportPdf}
+          disabled={exporting}
+          hitSlop={10}
+          testID="export-pdf-btn"
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color={Colors.textSecondary} />
+          ) : (
+            <Ionicons name="share-outline" size={20} color={Colors.textSecondary} />
+          )}
+        </Pressable>
       </View>
 
       <ScrollView
@@ -340,6 +535,16 @@ const styles = StyleSheet.create({
   },
   totalBadgeText: { fontSize: 14, fontFamily: "Inter_700Bold", color: Colors.primary },
   analyseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  exportBtn: {
     width: 28,
     height: 28,
     borderRadius: 8,

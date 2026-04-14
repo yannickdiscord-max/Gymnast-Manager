@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -145,7 +146,11 @@ export default function AnalyseScreen() {
   const diffPositive = dDiff !== null && dDiff >= 0;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { paddingTop: insets.top + webTopInset }]}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + webTopInset + 20 : 0}
+    >
       <View style={styles.header}>
         <Pressable onPress={goBack} hitSlop={12} testID="back-btn">
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
@@ -170,6 +175,7 @@ export default function AnalyseScreen() {
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       >
         {/* D-Score vergelijking */}
         <View style={styles.section}>
@@ -281,7 +287,7 @@ export default function AnalyseScreen() {
           />
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

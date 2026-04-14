@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,6 +26,7 @@ import {
   getOnderdelen,
   calculateDWaarde,
   TOESTELLEN,
+  DUPLICATE_WEDSTRIJD_ERROR,
   type Sporter,
   type Wedstrijd,
   type Toestel,
@@ -113,6 +115,12 @@ export default function ScoresScreen() {
     );
   };
 
+  const normalizeEuropeanDate = (val: string): string => {
+    const match = val.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (!match) return val.trim();
+    return `${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}-${match[3]}`;
+  };
+
   const handleSave = async () => {
     if (!naam.trim()) { setErrorMsg("Vul een wedstrijdnaam in"); return; }
     if (!datum.trim()) { setErrorMsg("Vul een datum in"); return; }
@@ -121,29 +129,44 @@ export default function ScoresScreen() {
       return;
     }
     if (!locatie.trim()) { setErrorMsg("Vul een locatie in"); return; }
+    const normalizedDatum = normalizeEuropeanDate(datum);
+    setDatum(normalizedDatum);
 
     setSaving(true);
-    const expectedSnapshot = await snapshotDWaarde(sporter);
-    const wedstrijd = await addWedstrijd(
-      sporterId!,
-      naam.trim(),
-      datum.trim(),
-      locatie.trim(),
-      expectedSnapshot
-    );
-    setWedstrijden((prev) =>
-      [...prev, wedstrijd].sort((a, b) => {
-        const parse = (d: string) => {
-          const [dd, mm, yyyy] = d.split("-").map(Number);
-          return new Date(yyyy, mm - 1, dd).getTime();
-        };
-        return parse(b.datum) - parse(a.datum);
-      })
-    );
-    setSaving(false);
-    setModalVisible(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.push({ pathname: "/wedstrijd/[wedstrijdId]", params: { wedstrijdId: wedstrijd.id } });
+    try {
+      const expectedSnapshot = await snapshotDWaarde(sporter);
+      const wedstrijd = await addWedstrijd(
+        sporterId!,
+        naam.trim(),
+        normalizedDatum,
+        locatie.trim(),
+        expectedSnapshot
+      );
+      setWedstrijden((prev) =>
+        [...prev, wedstrijd].sort((a, b) => {
+          const parse = (d: string) => {
+            const [dd, mm, yyyy] = d.split("-").map(Number);
+            return new Date(yyyy, mm - 1, dd).getTime();
+          };
+          return parse(b.datum) - parse(a.datum);
+        })
+      );
+      setModalVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.push({ pathname: "/wedstrijd/[wedstrijdId]", params: { wedstrijdId: wedstrijd.id } });
+    } catch (error) {
+      if (error instanceof Error && error.message === DUPLICATE_WEDSTRIJD_ERROR) {
+        setModalVisible(false);
+        Alert.alert(
+          "Wedstrijd bestaat al",
+          "Er bestaat al een wedstrijd met exact dezelfde naam, datum en locatie. Controleer je invoer."
+        );
+      } else {
+        Alert.alert("Opslaan mislukt", "Er ging iets mis bij het opslaan van de wedstrijd.");
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -164,22 +187,33 @@ export default function ScoresScreen() {
     if (!lastOtherWedstrijd || !sporterId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const { naam: n, datum: d, locatie: l } = lastOtherWedstrijd;
-    const expectedSnapshot = await snapshotDWaarde(sporter);
-    const wedstrijd = await addWedstrijd(sporterId, n, d, l, expectedSnapshot);
-    setWedstrijden((prev) =>
-      [...prev, wedstrijd].sort((a, b) => {
-        const parse = (dt: string) => {
-          const [dd, mm, yyyy] = dt.split("-").map(Number);
-          return new Date(yyyy, mm - 1, dd).getTime();
-        };
-        return parse(b.datum) - parse(a.datum);
-      })
-    );
-    // Refresh lastOtherWedstrijd in case it changed
-    const updated = await getLastWedstrijdFromOtherSporters(sporterId);
-    setLastOtherWedstrijd(updated || null);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.push({ pathname: "/wedstrijd/[wedstrijdId]", params: { wedstrijdId: wedstrijd.id } });
+    try {
+      const expectedSnapshot = await snapshotDWaarde(sporter);
+      const wedstrijd = await addWedstrijd(sporterId, n, d, l, expectedSnapshot);
+      setWedstrijden((prev) =>
+        [...prev, wedstrijd].sort((a, b) => {
+          const parse = (dt: string) => {
+            const [dd, mm, yyyy] = dt.split("-").map(Number);
+            return new Date(yyyy, mm - 1, dd).getTime();
+          };
+          return parse(b.datum) - parse(a.datum);
+        })
+      );
+      // Refresh lastOtherWedstrijd in case it changed
+      const updated = await getLastWedstrijdFromOtherSporters(sporterId);
+      setLastOtherWedstrijd(updated || null);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.push({ pathname: "/wedstrijd/[wedstrijdId]", params: { wedstrijdId: wedstrijd.id } });
+    } catch (error) {
+      if (error instanceof Error && error.message === DUPLICATE_WEDSTRIJD_ERROR) {
+        Alert.alert(
+          "Wedstrijd bestaat al",
+          "Deze wedstrijd staat al in je lijst. Controleer de gegevens als je een nieuwe wilt toevoegen."
+        );
+      } else {
+        Alert.alert("Opslaan mislukt", "Er ging iets mis bij het toevoegen van de wedstrijd.");
+      }
+    }
   };
 
   const getTotaalScore = (wedstrijd: Wedstrijd) => {

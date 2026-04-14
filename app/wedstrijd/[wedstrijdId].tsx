@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +22,7 @@ import Colors from "@/constants/colors";
 import {
   getWedstrijd,
   saveWedstrijdScores,
+  saveWedstrijdInfo,
   TOESTELLEN,
   type Wedstrijd,
   type ToestelScore,
@@ -35,6 +38,12 @@ export default function WedstrijdScreen() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editNaam, setEditNaam] = useState("");
+  const [editDatum, setEditDatum] = useState("");
+  const [editLocatie, setEditLocatie] = useState("");
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [editErrorMsg, setEditErrorMsg] = useState("");
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -51,6 +60,9 @@ export default function WedstrijdScreen() {
     const data = await getWedstrijd(wedstrijdId);
     if (data) {
       setWedstrijd(data);
+      setEditNaam(data.naam);
+      setEditDatum(data.datum);
+      setEditLocatie(data.locatie);
       const initial: Record<string, { dScore: string; eScore: string; penalty: string }> = {};
       for (const t of TOESTELLEN) {
         const s = data.scores[t];
@@ -193,12 +205,12 @@ export default function WedstrijdScreen() {
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-              color: #111827;
-              background: #f8fafc;
+              color: #F2F2F2;
+              background: #3A3A3A;
               padding: 20px;
             }
             .headerCard {
-              background: #1f6ad9;
+              background: #FD8B00;
               border-radius: 14px;
               padding: 16px 18px;
               color: #ffffff;
@@ -210,7 +222,7 @@ export default function WedstrijdScreen() {
               color: #ffffff;
             }
             .sub {
-              color: rgba(255, 255, 255, 0.88);
+              color: rgba(255, 255, 255, 0.9);
               margin-bottom: 2px;
               font-size: 13px;
             }
@@ -221,8 +233,8 @@ export default function WedstrijdScreen() {
               color: #ffffff;
             }
             .tableCard {
-              background: #ffffff;
-              border: 1px solid #dbe4f0;
+              background: #505050;
+              border: 1px solid #606060;
               border-radius: 14px;
               overflow: hidden;
             }
@@ -232,29 +244,29 @@ export default function WedstrijdScreen() {
               font-size: 12px;
             }
             th, td {
-              border-bottom: 1px solid #e9eff7;
+              border-bottom: 1px solid #606060;
               padding: 10px 8px;
               text-align: left;
               vertical-align: top;
             }
             th {
-              background: #ecf3ff;
-              color: #1f6ad9;
+              background: #5A5A5A;
+              color: #FD8B00;
               font-weight: 700;
               font-size: 11px;
               letter-spacing: 0.3px;
               text-transform: uppercase;
             }
             tbody tr:nth-child(odd) td {
-              background: #fbfdff;
+              background: #575757;
             }
             .notes {
               margin-top: 2px;
               white-space: pre-wrap;
-              color: #334155;
+              color: #F2F2F2;
               font-size: 11px;
-              background: #f1f6ff;
-              border: 1px solid #dbe8ff;
+              background: #5A5A5A;
+              border: 1px solid #606060;
               border-radius: 10px;
               padding: 8px 10px;
             }
@@ -314,6 +326,64 @@ export default function WedstrijdScreen() {
     }
   };
 
+  const isValidEuropeanDate = (val: string): boolean => {
+    const match = val.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (!match) return false;
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const year = parseInt(match[3], 10);
+    if (month < 1 || month > 12) return false;
+    if (day < 1) return false;
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  };
+
+  const normalizeEuropeanDate = (val: string): string => {
+    const match = val.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (!match) return val.trim();
+    return `${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}-${match[3]}`;
+  };
+
+  const openEditModal = () => {
+    if (!wedstrijd) return;
+    setEditNaam(wedstrijd.naam);
+    setEditDatum(wedstrijd.datum);
+    setEditLocatie(wedstrijd.locatie);
+    setEditErrorMsg("");
+    setEditModalVisible(true);
+  };
+
+  const handleSaveWedstrijdInfo = async () => {
+    if (!wedstrijd || !wedstrijdId) return;
+    const naam = editNaam.trim();
+    const datum = editDatum.trim();
+    const locatie = editLocatie.trim();
+    if (!naam) { setEditErrorMsg("Vul een wedstrijdnaam in"); return; }
+    if (!datum) { setEditErrorMsg("Vul een datum in"); return; }
+    if (!isValidEuropeanDate(datum)) {
+      setEditErrorMsg("Datum moet DD-MM-JJJJ zijn (bijv. 14-03-2025)");
+      return;
+    }
+    if (!locatie) { setEditErrorMsg("Vul een locatie in"); return; }
+    const normalizedDatum = normalizeEuropeanDate(datum);
+    setEditDatum(normalizedDatum);
+    if (naam === wedstrijd.naam && normalizedDatum === wedstrijd.datum && locatie === wedstrijd.locatie) {
+      setEditModalVisible(false);
+      return;
+    }
+    try {
+      setSavingInfo(true);
+      await saveWedstrijdInfo(wedstrijdId, naam, normalizedDatum, locatie);
+      setWedstrijd((prev) => (prev ? { ...prev, naam, datum: normalizedDatum, locatie } : prev));
+      setEditModalVisible(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Opslaan mislukt", "Er ging iets mis bij het opslaan van de wedstrijdgegevens.");
+    } finally {
+      setSavingInfo(false);
+    }
+  };
+
   const anyScore = TOESTELLEN.some((t) => {
     const s = scores[t];
     return s && (s.dScore !== "" || s.eScore !== "" || s.penalty !== "");
@@ -355,8 +425,10 @@ export default function WedstrijdScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>{wedstrijd.naam}</Text>
-          <Text style={styles.headerSub}>{wedstrijd.datum} · {wedstrijd.locatie}</Text>
+          <Pressable onPress={openEditModal} hitSlop={8} testID="wedstrijd-details-edit-btn">
+            <Text style={styles.headerTitle} numberOfLines={1}>{wedstrijd.naam}</Text>
+            <Text style={styles.headerSub}>{wedstrijd.datum} · {wedstrijd.locatie}</Text>
+          </Pressable>
         </View>
         <Pressable
           style={({ pressed }) => [styles.exportBtn, pressed && { opacity: 0.6 }]}
@@ -482,6 +554,79 @@ export default function WedstrijdScreen() {
           )}
         </Pressable>
       </View>
+
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setEditModalVisible(false)} />
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Wedstrijd bewerken</Text>
+
+            <Text style={styles.fieldLabel}>Wedstrijdnaam</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editNaam}
+              onChangeText={(t) => { setEditNaam(t); setEditErrorMsg(""); }}
+              placeholder="bijv. Regiokampioenschap"
+              placeholderTextColor={Colors.textTertiary}
+              autoFocus
+              testID="edit-naam-input"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Datum (DD-MM-JJJJ)</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editDatum}
+              onChangeText={(t) => { setEditDatum(t); setEditErrorMsg(""); }}
+              placeholder="bijv. 14-03-2025"
+              placeholderTextColor={Colors.textTertiary}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+              testID="edit-datum-input"
+            />
+
+            <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Locatie</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editLocatie}
+              onChangeText={(t) => { setEditLocatie(t); setEditErrorMsg(""); }}
+              placeholder="bijv. Sporthal De Kolk"
+              placeholderTextColor={Colors.textTertiary}
+              testID="edit-locatie-input"
+            />
+
+            {!!editErrorMsg && <Text style={styles.errorText}>{editErrorMsg}</Text>}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.cancelBtn}
+                onPress={() => setEditModalVisible(false)}
+                testID="edit-cancel-btn"
+              >
+                <Text style={styles.cancelBtnText}>Annuleren</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveBtn, savingInfo && { opacity: 0.6 }]}
+                onPress={handleSaveWedstrijdInfo}
+                disabled={savingInfo}
+                testID="edit-save-btn"
+              >
+                {savingInfo
+                  ? <ActivityIndicator size="small" color={Colors.white} />
+                  : <Text style={styles.saveBtnText}>Opslaan</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -597,4 +742,46 @@ const styles = StyleSheet.create({
   saveButtonText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: Colors.white },
   errorTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.textSecondary },
   backLink: { fontSize: 16, fontFamily: "Inter_500Medium", color: Colors.primary },
+  modalOverlay: { flex: 1, justifyContent: "flex-end" },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.5)" },
+  modalSheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.borderLight,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  modalTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text, marginBottom: 20 },
+  fieldLabel: { fontSize: 13, fontFamily: "Inter_500Medium", color: Colors.textSecondary, marginBottom: 8 },
+  textInput: {
+    backgroundColor: Colors.surfaceSecondary,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  errorText: { fontSize: 13, fontFamily: "Inter_400Regular", color: Colors.error, marginTop: 8 },
+  modalActions: { flexDirection: "row", gap: 12, marginTop: 24 },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+  },
+  cancelBtnText: { fontSize: 15, fontFamily: "Inter_500Medium", color: Colors.textSecondary },
+  saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center" },
+  saveBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: Colors.white },
 });

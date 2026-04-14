@@ -321,13 +321,112 @@ export interface Wedstrijd {
 }
 
 const WEDSTRIJDEN_KEY = "turnteam_wedstrijden";
+const WEDSTRIJDEN_MIGRATED_KEY = "turnteam_wedstrijden_dedupe_v1_done";
+
+export const DUPLICATE_WEDSTRIJD_ERROR = "DUPLICATE_WEDSTRIJD_ERROR";
+
+function normalizeEuropeanDate(value: string): string {
+  const match = value.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!match) return value.trim();
+  const day = match[1].padStart(2, "0");
+  const month = match[2].padStart(2, "0");
+  const year = match[3];
+  return `${day}-${month}-${year}`;
+}
+
+function wedstrijdIdentityKey(w: Wedstrijd): string {
+  return `${w.sporterId}__${w.naam}__${normalizeEuropeanDate(w.datum)}__${w.locatie}`;
+}
+
+function dedupeWedstrijdenById(all: Wedstrijd[]): Wedstrijd[] {
+  const byId = new Map<string, Wedstrijd>();
+  for (const wedstrijd of all) {
+    // Keep the latest occurrence when duplicates exist.
+    byId.set(wedstrijd.id, wedstrijd);
+  }
+  return Array.from(byId.values());
+}
+
+function mergeScores(
+  base: Record<string, ToestelScore>,
+  incoming: Record<string, ToestelScore>
+): Record<string, ToestelScore> {
+  const merged: Record<string, ToestelScore> = { ...base };
+  for (const toestel of Object.keys(incoming)) {
+    const existing = merged[toestel];
+    const next = incoming[toestel];
+    merged[toestel] = {
+      dScore: next.dScore,
+      eScore: next.eScore,
+      penalty: next.penalty,
+      dScoreNote:
+        next.dScoreNote && next.dScoreNote.trim() !== ""
+          ? next.dScoreNote
+          : existing?.dScoreNote,
+      eScoreNote:
+        next.eScoreNote && next.eScoreNote.trim() !== ""
+          ? next.eScoreNote
+          : existing?.eScoreNote,
+      penaltyNote:
+        next.penaltyNote && next.penaltyNote.trim() !== ""
+          ? next.penaltyNote
+          : existing?.penaltyNote,
+    };
+  }
+  return merged;
+}
+
+function mergeWedstrijd(base: Wedstrijd, incoming: Wedstrijd): Wedstrijd {
+  const mergedExpected: Record<string, number | null> = {
+    ...(base.expectedDWaarde ?? {}),
+  };
+  for (const [toestel, value] of Object.entries(incoming.expectedDWaarde ?? {})) {
+    if (value !== null && value !== undefined) {
+      mergedExpected[toestel] = value;
+    } else if (!(toestel in mergedExpected)) {
+      mergedExpected[toestel] = value;
+    }
+  }
+  return {
+    ...base,
+    ...incoming,
+    id: base.id,
+    scores: mergeScores(base.scores ?? {}, incoming.scores ?? {}),
+    expectedDWaarde: mergedExpected,
+  };
+}
+
+function dedupeAndMergeWedstrijden(all: Wedstrijd[]): Wedstrijd[] {
+  const byIdentity = new Map<string, Wedstrijd>();
+  for (const wedstrijd of all) {
+    const key = wedstrijdIdentityKey(wedstrijd);
+    const existing = byIdentity.get(key);
+    if (!existing) {
+      byIdentity.set(key, wedstrijd);
+    } else {
+      byIdentity.set(key, mergeWedstrijd(existing, wedstrijd));
+    }
+  }
+  return dedupeWedstrijdenById(Array.from(byIdentity.values()));
+}
+
+async function getNormalizedWedstrijden(): Promise<Wedstrijd[]> {
+  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
+  if (!data) return [];
+  const parsed = JSON.parse(data) as Wedstrijd[];
+  const migrated = await AsyncStorage.getItem(WEDSTRIJDEN_MIGRATED_KEY);
+  if (migrated === "1") return dedupeWedstrijdenById(parsed);
+
+  const normalized = dedupeAndMergeWedstrijden(parsed);
+  await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(normalized));
+  await AsyncStorage.setItem(WEDSTRIJDEN_MIGRATED_KEY, "1");
+  return normalized;
+}
 
 export async function getLastWedstrijdFromOtherSporters(
   sporterId: string
 ): Promise<Wedstrijd | undefined> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return undefined;
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   // Traverse in reverse (newest push = last in array) to find most recent from another sporter
   for (let i = all.length - 1; i >= 0; i--) {
     if (all[i].sporterId !== sporterId) return all[i];
@@ -336,9 +435,7 @@ export async function getLastWedstrijdFromOtherSporters(
 }
 
 export async function getWedstrijden(sporterId: string): Promise<Wedstrijd[]> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return [];
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   const toTimestamp = (datum: string): number => {
     const parts = datum.split("-");
     if (parts.length !== 3) return 0;
@@ -351,9 +448,7 @@ export async function getWedstrijden(sporterId: string): Promise<Wedstrijd[]> {
 }
 
 export async function getWedstrijd(id: string): Promise<Wedstrijd | undefined> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return undefined;
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   return all.find((w) => w.id === id);
 }
 
@@ -364,19 +459,29 @@ export async function addWedstrijd(
   locatie: string,
   expectedDWaarde?: Record<string, number | null>
 ): Promise<Wedstrijd> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  const all: Wedstrijd[] = data ? JSON.parse(data) : [];
+  const all = await getNormalizedWedstrijden();
+  const normalizedDatum = normalizeEuropeanDate(datum);
+  const existingIndex = all.findIndex(
+    (w) =>
+      w.sporterId === sporterId &&
+      w.naam === naam &&
+      normalizeEuropeanDate(w.datum) === normalizedDatum &&
+      w.locatie === locatie
+  );
+  if (existingIndex !== -1) {
+    throw new Error(DUPLICATE_WEDSTRIJD_ERROR);
+  }
   const newWedstrijd: Wedstrijd = {
     id: Crypto.randomUUID(),
     sporterId,
     naam,
-    datum,
+    datum: normalizedDatum,
     locatie,
     scores: {},
     expectedDWaarde: expectedDWaarde ?? {},
   };
   all.push(newWedstrijd);
-  await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+  await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   return newWedstrijd;
 }
 
@@ -384,13 +489,24 @@ export async function saveWedstrijdScores(
   id: string,
   scores: Record<string, ToestelScore>
 ): Promise<void> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return;
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   const index = all.findIndex((w) => w.id === id);
   if (index !== -1) {
-    all[index].scores = scores;
-    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+    const mergedScores: Record<string, ToestelScore> = {};
+    for (const toestel of Object.keys(scores)) {
+      const incoming = scores[toestel];
+      const existing = all[index].scores[toestel];
+      mergedScores[toestel] = {
+        dScore: incoming.dScore,
+        eScore: incoming.eScore,
+        penalty: incoming.penalty,
+        dScoreNote: existing?.dScoreNote,
+        eScoreNote: existing?.eScoreNote,
+        penaltyNote: existing?.penaltyNote,
+      };
+    }
+    all[index].scores = mergedScores;
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   }
 }
 
@@ -401,14 +517,12 @@ export async function saveToestelNotes(
   eScoreNote: string,
   penaltyNote: string
 ): Promise<void> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return;
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   const index = all.findIndex((w) => w.id === wedstrijdId);
   if (index !== -1) {
     const existing = all[index].scores[toestel] ?? { dScore: 0, eScore: 0, penalty: 0 };
     all[index].scores[toestel] = { ...existing, dScoreNote, eScoreNote, penaltyNote };
-    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   }
 }
 
@@ -417,24 +531,48 @@ export async function saveExpectedDWaarde(
   toestel: string,
   value: number | null
 ): Promise<void> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return;
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   const index = all.findIndex((w) => w.id === wedstrijdId);
   if (index !== -1) {
     if (!all[index].expectedDWaarde) all[index].expectedDWaarde = {};
     all[index].expectedDWaarde![toestel] = value;
-    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(all));
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
+  }
+}
+
+export async function saveWedstrijdNaam(
+  wedstrijdId: string,
+  naam: string
+): Promise<void> {
+  const all = await getNormalizedWedstrijden();
+  const index = all.findIndex((w) => w.id === wedstrijdId);
+  if (index !== -1) {
+    all[index].naam = naam;
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
+  }
+}
+
+export async function saveWedstrijdInfo(
+  wedstrijdId: string,
+  naam: string,
+  datum: string,
+  locatie: string
+): Promise<void> {
+  const all = await getNormalizedWedstrijden();
+  const index = all.findIndex((w) => w.id === wedstrijdId);
+  if (index !== -1) {
+    all[index].naam = naam;
+    all[index].datum = normalizeEuropeanDate(datum);
+    all[index].locatie = locatie;
+    await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   }
 }
 
 export async function deleteWedstrijd(id: string): Promise<void> {
-  const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
-  if (!data) return;
-  const all: Wedstrijd[] = JSON.parse(data);
+  const all = await getNormalizedWedstrijden();
   await AsyncStorage.setItem(
     WEDSTRIJDEN_KEY,
-    JSON.stringify(all.filter((w) => w.id !== id))
+    JSON.stringify(dedupeWedstrijdenById(all.filter((w) => w.id !== id)))
   );
 }
 

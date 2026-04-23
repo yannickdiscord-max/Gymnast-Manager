@@ -452,6 +452,160 @@ export async function getWedstrijd(id: string): Promise<Wedstrijd | undefined> {
   return all.find((w) => w.id === id);
 }
 
+export type AgendaWedstrijdItem = Wedstrijd & { sporterNaam: string };
+
+/** Agenda entries that are not wedstrijden (feestdagen, vrije dagen, etc.). */
+export type AgendaKalenderCategorie =
+  | "vrij"
+  | "nationale_feestdag"
+  | "feestdag"
+  | "overig";
+
+export interface CustomAgendaEvent {
+  id: string;
+  titel: string;
+  datum: string;
+  locatie: string;
+  categorie: AgendaKalenderCategorie;
+  notitie: string;
+}
+
+export const AGENDA_CATEGORIE_LABELS: Record<AgendaKalenderCategorie, string> = {
+  vrij: "Vrije dag / vakantie",
+  nationale_feestdag: "Nationale feestdag",
+  feestdag: "Feestdag",
+  overig: "Anders",
+};
+
+export type AgendaItemWedstrijd = AgendaWedstrijdItem & { source: "wedstrijd" };
+export type AgendaItemKalender = {
+  source: "kalender";
+  id: string;
+  titel: string;
+  datum: string;
+  locatie: string;
+  categorie: AgendaKalenderCategorie;
+  notitie: string;
+  categorieLabel: string;
+};
+
+export type AgendaItem = AgendaItemWedstrijd | AgendaItemKalender;
+
+const CUSTOM_AGENDA_KEY = "turnteam_custom_agenda_v1";
+
+async function getCustomAgendaEvents(): Promise<CustomAgendaEvent[]> {
+  const data = await AsyncStorage.getItem(CUSTOM_AGENDA_KEY);
+  if (!data) return [];
+  return JSON.parse(data) as CustomAgendaEvent[];
+}
+
+async function saveCustomAgendaEvents(events: CustomAgendaEvent[]): Promise<void> {
+  await AsyncStorage.setItem(CUSTOM_AGENDA_KEY, JSON.stringify(events));
+}
+
+export const MISSING_AGENDA_TITEL = "MISSING_AGENDA_TITEL";
+export const INVALID_AGENDA_DATUM = "INVALID_AGENDA_DATUM";
+
+export async function addCustomAgendaEvent(
+  titel: string,
+  datum: string,
+  locatie: string,
+  categorie: AgendaKalenderCategorie,
+  notitie: string
+): Promise<CustomAgendaEvent> {
+  const trimmedTitel = titel.trim();
+  if (!trimmedTitel) {
+    throw new Error(MISSING_AGENDA_TITEL);
+  }
+  const normalizedDatum = normalizeEuropeanDate(datum);
+  if (wedstrijdDatumToTimestamp(normalizedDatum) === null) {
+    throw new Error(INVALID_AGENDA_DATUM);
+  }
+  const ev: CustomAgendaEvent = {
+    id: Crypto.randomUUID(),
+    titel: trimmedTitel,
+    datum: normalizedDatum,
+    locatie: locatie.trim(),
+    categorie,
+    notitie: notitie.trim(),
+  };
+  const all = await getCustomAgendaEvents();
+  all.push(ev);
+  await saveCustomAgendaEvents(all);
+  return ev;
+}
+
+function wedstrijdDatumToTimestamp(datum: string): number | null {
+  const parts = datum.split("-");
+  if (parts.length !== 3) return null;
+  const day = Number(parts[0]);
+  const month = Number(parts[1]);
+  const year = Number(parts[2]);
+  if (!day || !month || !year) return null;
+  const d = new Date(year, month - 1, day);
+  if (
+    d.getFullYear() !== year ||
+    d.getMonth() !== month - 1 ||
+    d.getDate() !== day
+  ) {
+    return null;
+  }
+  return d.getTime();
+}
+
+/** Wedstrijden and kalender-items from today onward, sorted by date ascending. */
+export async function getUpcomingAgendaItems(options: {
+  onlyFavorieten?: boolean;
+} = {}): Promise<AgendaItem[]> {
+  const all = await getNormalizedWedstrijden();
+  const sporters = await getSporters();
+  const sporterById = new Map(sporters.map((s) => [s.id, s]));
+  const now = new Date();
+  const todayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  ).getTime();
+
+  const favorietIds = options.onlyFavorieten
+    ? new Set(sporters.filter((s) => s.favoriet).map((s) => s.id))
+    : null;
+
+  const items: AgendaItem[] = [];
+  for (const w of all) {
+    if (favorietIds !== null && !favorietIds.has(w.sporterId)) continue;
+    const ts = wedstrijdDatumToTimestamp(w.datum);
+    if (ts === null || ts < todayStart) continue;
+    items.push({
+      source: "wedstrijd",
+      ...w,
+      sporterNaam: sporterById.get(w.sporterId)?.naam ?? "Onbekend",
+    });
+  }
+
+  const customAll = await getCustomAgendaEvents();
+  for (const c of customAll) {
+    const ts = wedstrijdDatumToTimestamp(c.datum);
+    if (ts === null || ts < todayStart) continue;
+    items.push({
+      source: "kalender",
+      id: c.id,
+      titel: c.titel,
+      datum: c.datum,
+      locatie: c.locatie,
+      categorie: c.categorie,
+      notitie: c.notitie,
+      categorieLabel: AGENDA_CATEGORIE_LABELS[c.categorie],
+    });
+  }
+
+  items.sort(
+    (a, b) =>
+      wedstrijdDatumToTimestamp(a.datum)! - wedstrijdDatumToTimestamp(b.datum)!
+  );
+  return items;
+}
+
 export async function addWedstrijd(
   sporterId: string,
   naam: string,

@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
+import AgendaModal from "@/components/AgendaModal";
 import { getSporters, toggleFavoriet, NIVEAUS, type Sporter } from "@/lib/storage";
 
 type FilterMode = "favorieten" | "alle";
@@ -22,6 +23,7 @@ export default function HomeScreen() {
   const [sporters, setSporters] = useState<Sporter[]>([]);
   const [filter, setFilter] = useState<FilterMode>("alle");
   const [loading, setLoading] = useState(true);
+  const [agendaOpen, setAgendaOpen] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -43,6 +45,11 @@ export default function HomeScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const updated = await toggleFavoriet(id);
     setSporters(updated);
+  };
+
+  const openAgenda = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAgendaOpen(true);
   };
 
   const sortSporters = (list: Sporter[]) =>
@@ -112,6 +119,15 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Turnteam</Text>
+        <Pressable
+          onPress={openAgenda}
+          hitSlop={12}
+          testID="agenda-btn"
+          accessibilityRole="button"
+          accessibilityLabel="Agenda"
+        >
+          <Ionicons name="calendar-outline" size={26} color={Colors.primary} />
+        </Pressable>
       </View>
 
       <View style={styles.filterRow}>
@@ -208,6 +224,13 @@ export default function HomeScreen() {
           <Text style={styles.addButtonText}>Sporter toevoegen</Text>
         </Pressable>
       </View>
+
+      <AgendaModal
+        visible={agendaOpen}
+        onClose={() => setAgendaOpen(false)}
+        onlyFavorieten={filter === "favorieten"}
+        webBottomInset={webBottomInset}
+      />
     </View>
   );
 }
@@ -218,11 +241,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 8,
+    gap: 12,
   },
   headerTitle: {
+    flex: 1,
     fontSize: 28,
     fontFamily: "Inter_700Bold",
     color: Colors.text,

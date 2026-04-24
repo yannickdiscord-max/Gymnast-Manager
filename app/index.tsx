@@ -119,15 +119,29 @@ export default function HomeScreen() {
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Turnteam</Text>
-        <Pressable
-          onPress={openAgenda}
-          hitSlop={12}
-          testID="agenda-btn"
-          accessibilityRole="button"
-          accessibilityLabel="Agenda"
-        >
-          <Ionicons name="calendar-outline" size={26} color={Colors.primary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/training-attendance");
+            }}
+            hitSlop={12}
+            testID="training-attendance-btn"
+            accessibilityRole="button"
+            accessibilityLabel="Aanwezigheid registreren"
+          >
+            <Ionicons name="clipboard-outline" size={26} color={Colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={openAgenda}
+            hitSlop={12}
+            testID="agenda-btn"
+            accessibilityRole="button"
+            accessibilityLabel="Agenda"
+          >
+            <Ionicons name="calendar-outline" size={26} color={Colors.primary} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.filterRow}>
@@ -254,6 +268,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontFamily: "Inter_700Bold",
     color: Colors.text,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
   },
   filterRow: {
     flexDirection: "row",

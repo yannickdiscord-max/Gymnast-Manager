@@ -299,6 +299,271 @@ export async function deleteSporter(id: string): Promise<void> {
   const sporters = await getSporters();
   const filtered = sporters.filter((s) => s.id !== id);
   await saveSporters(filtered);
+  const gesprekken = await getAllOuderGesprekken();
+  await saveAllOuderGesprekken(gesprekken.filter((g) => g.sporterId !== id));
+}
+
+/** Eén training per kalenderdag (datum DD-MM-JJJJ); wie er aanwezig was. */
+export interface TrainingSession {
+  id: string;
+  datum: string;
+  attendeeSporterIds: string[];
+}
+
+const TRAINING_SESSIONS_KEY = "turnteam_training_sessions_v1";
+
+export const DUPLICATE_TRAINING_SESSION_ERROR = "DUPLICATE_TRAINING_SESSION_ERROR";
+export const INVALID_TRAINING_SESSION_DATUM = "INVALID_TRAINING_SESSION_DATUM";
+
+function isValidEuropeanDateString(val: string): boolean {
+  const match = val.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!match) return false;
+  const day = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const year = parseInt(match[3], 10);
+  if (month < 1 || month > 12) return false;
+  if (day < 1) return false;
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
+function normalizeTrainingSessionDatum(value: string): string {
+  const match = value.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!match) return value.trim();
+  return `${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}-${match[3]}`;
+}
+
+function trainingSessionDatumToTime(datum: string): number {
+  const [dd, mm, yyyy] = datum.split("-").map(Number);
+  return new Date(yyyy, mm - 1, dd).getTime();
+}
+
+async function getTrainingSessionsRaw(): Promise<TrainingSession[]> {
+  const data = await AsyncStorage.getItem(TRAINING_SESSIONS_KEY);
+  if (!data) return [];
+  const parsed = JSON.parse(data) as TrainingSession[];
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+async function saveTrainingSessionsRaw(sessions: TrainingSession[]): Promise<void> {
+  await AsyncStorage.setItem(TRAINING_SESSIONS_KEY, JSON.stringify(sessions));
+}
+
+export async function getTrainingSessions(): Promise<TrainingSession[]> {
+  return getTrainingSessionsRaw();
+}
+
+export async function getTrainingSessionForDatum(
+  datumInput: string
+): Promise<TrainingSession | undefined> {
+  if (!isValidEuropeanDateString(datumInput)) return undefined;
+  const norm = normalizeTrainingSessionDatum(datumInput);
+  const all = await getTrainingSessionsRaw();
+  return all.find((s) => s.datum === norm);
+}
+
+export async function addTrainingSession(
+  datumInput: string,
+  attendeeSporterIds: string[]
+): Promise<TrainingSession> {
+  const trimmed = datumInput.trim();
+  if (!isValidEuropeanDateString(trimmed)) {
+    throw new Error(INVALID_TRAINING_SESSION_DATUM);
+  }
+  const datum = normalizeTrainingSessionDatum(trimmed);
+  const all = await getTrainingSessionsRaw();
+  if (all.some((s) => s.datum === datum)) {
+    throw new Error(DUPLICATE_TRAINING_SESSION_ERROR);
+  }
+  const uniqueIds = [...new Set(attendeeSporterIds.filter(Boolean))];
+  const session: TrainingSession = {
+    id: Crypto.randomUUID(),
+    datum,
+    attendeeSporterIds: uniqueIds,
+  };
+  all.push(session);
+  await saveTrainingSessionsRaw(all);
+  return session;
+}
+
+const RECENT_TRAINING_SESSIONS_SHOWN = 16;
+
+export async function getSporterAttendanceSummary(sporterId: string): Promise<{
+  totalSessions: number;
+  attendedSessions: number;
+  percentage: number | null;
+  recentMarks: { attended: boolean }[];
+}> {
+  const all = await getTrainingSessionsRaw();
+  const sorted = [...all].sort(
+    (a, b) => trainingSessionDatumToTime(a.datum) - trainingSessionDatumToTime(b.datum)
+  );
+  const totalSessions = sorted.length;
+  if (totalSessions === 0) {
+    return {
+      totalSessions: 0,
+      attendedSessions: 0,
+      percentage: null,
+      recentMarks: [],
+    };
+  }
+  const attendedSessions = sorted.filter((s) =>
+    s.attendeeSporterIds.includes(sporterId)
+  ).length;
+  const percentage = Math.round((attendedSessions / totalSessions) * 100);
+  const recentSlice = sorted.slice(-RECENT_TRAINING_SESSIONS_SHOWN);
+  const recentMarks = recentSlice.map((s) => ({
+    attended: s.attendeeSporterIds.includes(sporterId),
+  }));
+  return { totalSessions, attendedSessions, percentage, recentMarks };
+}
+
+/** Gesprek met ouders: POP of gewoon gesprek, met datum en notities. */
+export type OuderGesprekType = "pop" | "normaal";
+
+export interface OuderGesprek {
+  id: string;
+  sporterId: string;
+  datum: string;
+  type: OuderGesprekType;
+  notities: string;
+}
+
+const OUDER_GESPREKKEN_KEY = "turnteam_ouder_gesprekken_v1";
+
+export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";
+
+async function getAllOuderGesprekken(): Promise<OuderGesprek[]> {
+  const data = await AsyncStorage.getItem(OUDER_GESPREKKEN_KEY);
+  if (!data) return [];
+  const parsed = JSON.parse(data) as OuderGesprek[];
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+async function saveAllOuderGesprekken(items: OuderGesprek[]): Promise<void> {
+  await AsyncStorage.setItem(OUDER_GESPREKKEN_KEY, JSON.stringify(items));
+}
+
+function normalizeOuderGesprekDatum(value: string): string {
+  const match = value.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (!match) return value.trim();
+  return `${match[1].padStart(2, "0")}-${match[2].padStart(2, "0")}-${match[3]}`;
+}
+
+function calendarDaysBetweenLocalDates(earlier: Date, later: Date): number {
+  const u1 = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  const u2 = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
+  return Math.floor((u2 - u1) / 86400000);
+}
+
+function europeanDatumStringToLocalDate(datum: string): Date {
+  const [dd, mm, yyyy] = datum.split("-").map(Number);
+  return new Date(yyyy, mm - 1, dd);
+}
+
+export async function getOuderGesprekkenForSporter(sporterId: string): Promise<OuderGesprek[]> {
+  const all = await getAllOuderGesprekken();
+  return all
+    .filter((g) => g.sporterId === sporterId)
+    .sort(
+      (a, b) =>
+        trainingSessionDatumToTime(b.datum) - trainingSessionDatumToTime(a.datum)
+    );
+}
+
+/** POP telt pas mee nadat de planningsdag voorbij is (niet vandaag of in de toekomst). */
+function isOuderGesprekDatumBeforeToday(datum: string, todayStartMs: number): boolean {
+  const ts = trainingSessionDatumToTime(datum);
+  return ts < todayStartMs;
+}
+
+export async function getLastPopGesprekLabel(sporterId: string): Promise<string> {
+  const list = await getOuderGesprekkenForSporter(sporterId);
+  const now = new Date();
+  const todayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate()
+  ).getTime();
+  const pastPops = list.filter(
+    (g) => g.type === "pop" && isOuderGesprekDatumBeforeToday(g.datum, todayStart)
+  );
+  if (pastPops.length === 0) {
+    return "Nog geen POP-gesprek geregistreerd";
+  }
+  const last = pastPops.reduce((a, b) =>
+    trainingSessionDatumToTime(b.datum) > trainingSessionDatumToTime(a.datum) ? b : a
+  );
+  const lastDay = europeanDatumStringToLocalDate(last.datum);
+  const today = new Date();
+  const daysAgo = Math.max(0, calendarDaysBetweenLocalDates(lastDay, today));
+  if (daysAgo <= 0) {
+    return "Laatste POP-gesprek: vandaag";
+  }
+  if (daysAgo === 1) {
+    return "Laatste POP-gesprek: gisteren";
+  }
+  return `Laatste POP-gesprek: ${daysAgo} dagen geleden`;
+}
+
+export async function addOuderGesprek(
+  sporterId: string,
+  datumInput: string,
+  type: OuderGesprekType,
+  notities: string
+): Promise<OuderGesprek> {
+  const trimmed = datumInput.trim();
+  if (!isValidEuropeanDateString(trimmed)) {
+    throw new Error(INVALID_OUDER_GESPREK_DATUM);
+  }
+  const datum = normalizeOuderGesprekDatum(trimmed);
+  const gesprek: OuderGesprek = {
+    id: Crypto.randomUUID(),
+    sporterId,
+    datum,
+    type,
+    notities: notities.trim(),
+  };
+  const all = await getAllOuderGesprekken();
+  all.push(gesprek);
+  await saveAllOuderGesprekken(all);
+  return gesprek;
+}
+
+export async function updateOuderGesprek(
+  id: string,
+  updates: { datum?: string; type?: OuderGesprekType; notities?: string }
+): Promise<OuderGesprek | undefined> {
+  const all = await getAllOuderGesprekken();
+  const index = all.findIndex((g) => g.id === id);
+  if (index === -1) return undefined;
+  const cur = all[index];
+  let datum = cur.datum;
+  if (updates.datum !== undefined) {
+    const t = updates.datum.trim();
+    if (!isValidEuropeanDateString(t)) {
+      throw new Error(INVALID_OUDER_GESPREK_DATUM);
+    }
+    datum = normalizeOuderGesprekDatum(t);
+  }
+  const next: OuderGesprek = {
+    ...cur,
+    datum,
+    type: updates.type ?? cur.type,
+    notities: updates.notities !== undefined ? updates.notities.trim() : cur.notities,
+  };
+  all[index] = next;
+  await saveAllOuderGesprekken(all);
+  return next;
+}
+
+export async function deleteOuderGesprek(id: string): Promise<void> {
+  const all = await getAllOuderGesprekken();
+  await saveAllOuderGesprekken(all.filter((g) => g.id !== id));
 }
 
 export interface ToestelScore {
@@ -455,11 +720,7 @@ export async function getWedstrijd(id: string): Promise<Wedstrijd | undefined> {
 export type AgendaWedstrijdItem = Wedstrijd & { sporterNaam: string };
 
 /** Agenda entries that are not wedstrijden (feestdagen, vrije dagen, etc.). */
-export type AgendaKalenderCategorie =
-  | "vrij"
-  | "nationale_feestdag"
-  | "feestdag"
-  | "overig";
+export type AgendaKalenderCategorie = "vrij" | "feestdag" | "overig";
 
 export interface CustomAgendaEvent {
   id: string;
@@ -472,7 +733,6 @@ export interface CustomAgendaEvent {
 
 export const AGENDA_CATEGORIE_LABELS: Record<AgendaKalenderCategorie, string> = {
   vrij: "Vrije dag / vakantie",
-  nationale_feestdag: "Nationale feestdag",
   feestdag: "Feestdag",
   overig: "Anders",
 };
@@ -489,14 +749,40 @@ export type AgendaItemKalender = {
   categorieLabel: string;
 };
 
-export type AgendaItem = AgendaItemWedstrijd | AgendaItemKalender;
+/** Geplande oudergesprekken (vandaag of later) in de agenda. */
+export type AgendaItemOuderGesprek = {
+  source: "ouder_gesprek";
+  id: string;
+  titel: string;
+  datum: string;
+  locatie: string;
+  notitie: string;
+  gesprekType: OuderGesprekType;
+  sporterId: string;
+  sporterNaam: string;
+};
+
+export type AgendaItem = AgendaItemWedstrijd | AgendaItemKalender | AgendaItemOuderGesprek;
 
 const CUSTOM_AGENDA_KEY = "turnteam_custom_agenda_v1";
 
 async function getCustomAgendaEvents(): Promise<CustomAgendaEvent[]> {
   const data = await AsyncStorage.getItem(CUSTOM_AGENDA_KEY);
   if (!data) return [];
-  return JSON.parse(data) as CustomAgendaEvent[];
+  const parsed = JSON.parse(data) as CustomAgendaEvent[];
+  let dirty = false;
+  const migrated = parsed.map((e) => {
+    const c = e.categorie as string;
+    if (c === "nationale_feestdag") {
+      dirty = true;
+      return { ...e, categorie: "feestdag" as AgendaKalenderCategorie };
+    }
+    return e;
+  });
+  if (dirty) {
+    await AsyncStorage.setItem(CUSTOM_AGENDA_KEY, JSON.stringify(migrated));
+  }
+  return migrated;
 }
 
 async function saveCustomAgendaEvents(events: CustomAgendaEvent[]): Promise<void> {
@@ -596,6 +882,25 @@ export async function getUpcomingAgendaItems(options: {
       categorie: c.categorie,
       notitie: c.notitie,
       categorieLabel: AGENDA_CATEGORIE_LABELS[c.categorie],
+    });
+  }
+
+  const gesprekkenAll = await getAllOuderGesprekken();
+  for (const g of gesprekkenAll) {
+    if (favorietIds !== null && !favorietIds.has(g.sporterId)) continue;
+    const ts = wedstrijdDatumToTimestamp(g.datum);
+    if (ts === null || ts < todayStart) continue;
+    const naam = sporterById.get(g.sporterId)?.naam ?? "Onbekend";
+    items.push({
+      source: "ouder_gesprek",
+      id: g.id,
+      titel: naam,
+      datum: g.datum,
+      locatie: "",
+      notitie: g.notities,
+      gesprekType: g.type,
+      sporterId: g.sporterId,
+      sporterNaam: naam,
     });
   }
 

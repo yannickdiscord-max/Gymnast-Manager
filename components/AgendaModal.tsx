@@ -24,12 +24,15 @@ import {
   getSporters,
   addWedstrijd,
   addCustomAgendaEvent,
+  addOuderGesprek,
   DUPLICATE_WEDSTRIJD_ERROR,
   MISSING_AGENDA_TITEL,
   INVALID_AGENDA_DATUM,
+  INVALID_OUDER_GESPREK_DATUM,
   type AgendaItem,
   type AgendaItemKalender,
   type AgendaKalenderCategorie,
+  type OuderGesprekType,
   type Sporter,
 } from "@/lib/storage";
 
@@ -38,12 +41,12 @@ const LIST_MAX_H = WINDOW_H * 0.68;
 /** Enough vertical space to show two event cards without scrolling when possible. */
 const LIST_MIN_TWO_ROWS = Math.min(WINDOW_H * 0.44, 380);
 
-type AddEventType = "wedstrijd" | AgendaKalenderCategorie;
+type AddEventType = "wedstrijd" | "ouder_gesprek" | AgendaKalenderCategorie;
 
 const ADD_TYPE_OPTIONS: { value: AddEventType; label: string }[] = [
   { value: "wedstrijd", label: "Wedstrijd" },
+  { value: "ouder_gesprek", label: "Gesprek" },
   { value: "vrij", label: "Vrij / vakantie" },
-  { value: "nationale_feestdag", label: "Nationale feestdag" },
   { value: "feestdag", label: "Feestdag" },
   { value: "overig", label: "Anders" },
 ];
@@ -75,6 +78,7 @@ export default function AgendaModal({
   const [addSporterId, setAddSporterId] = useState("");
   const [addError, setAddError] = useState("");
   const [savingAdd, setSavingAdd] = useState(false);
+  const [agendaGesprekKind, setAgendaGesprekKind] = useState<OuderGesprekType>("normaal");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +120,7 @@ export default function AgendaModal({
     setAddNotitie("");
     setAddSporterId("");
     setAddError("");
+    setAgendaGesprekKind("normaal");
     setPhase("add");
   };
 
@@ -127,6 +132,45 @@ export default function AgendaModal({
 
   const handleSaveAdd = async () => {
     setAddError("");
+    if (addType === "ouder_gesprek") {
+      if (!addSporterId) {
+        setAddError(
+          sporterChoices.length === 0 && onlyFavorieten
+            ? "Voeg eerst favoriete sporters toe."
+            : "Kies een sporter."
+        );
+        return;
+      }
+      if (!addDatum.trim()) {
+        setAddError("Vul een datum in.");
+        return;
+      }
+      setSavingAdd(true);
+      try {
+        const notParts: string[] = [];
+        if (addLocatie.trim()) notParts.push(`Locatie: ${addLocatie.trim()}`);
+        if (addNotitie.trim()) notParts.push(addNotitie.trim());
+        await addOuderGesprek(
+          addSporterId,
+          addDatum.trim(),
+          agendaGesprekKind,
+          notParts.join("\n\n")
+        );
+        await load();
+        setPhase("list");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (e) {
+        if (e instanceof Error && e.message === INVALID_OUDER_GESPREK_DATUM) {
+          setAddError("Ongeldige datum. Gebruik DD-MM-JJJJ.");
+        } else {
+          setAddError("Opslaan mislukt.");
+        }
+      } finally {
+        setSavingAdd(false);
+      }
+      return;
+    }
+
     if (addType === "wedstrijd") {
       if (!addSporterId) {
         setAddError(
@@ -172,7 +216,7 @@ export default function AgendaModal({
         addTitel,
         addDatum,
         addLocatie,
-        addType,
+        addType as AgendaKalenderCategorie,
         addNotitie
       );
       await load();
@@ -202,6 +246,15 @@ export default function AgendaModal({
     });
   };
 
+  const handleOuderGesprekPress = (item: AgendaItem & { source: "ouder_gesprek" }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onClose();
+    router.push({
+      pathname: "/pop-gesprekken/[sporterId]",
+      params: { sporterId: item.sporterId },
+    });
+  };
+
   const showKalenderDetail = (item: AgendaItemKalender) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const lines: string[] = [item.categorieLabel, `Datum: ${item.datum}`];
@@ -211,6 +264,38 @@ export default function AgendaModal({
   };
 
   const renderItem = ({ item }: { item: AgendaItem }) => {
+    if (item.source === "ouder_gesprek") {
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => handleOuderGesprekPress(item)}
+        >
+          <View
+            style={[
+              styles.typeTag,
+              item.gesprekType === "pop" ? styles.typeTagOuderPop : styles.typeTagOuderGesprek,
+            ]}
+          >
+            <Text style={styles.typeTagText}>
+              {item.gesprekType === "pop" ? "POP" : "Gesprek"}
+            </Text>
+          </View>
+          <Text style={styles.rowTitle} numberOfLines={2}>
+            {item.titel}
+          </Text>
+          <View style={styles.metaRow}>
+            <Ionicons name="calendar-outline" size={14} color={Colors.textTertiary} />
+            <Text style={styles.metaText}>{item.datum}</Text>
+          </View>
+          {item.notitie.trim() !== "" && (
+            <Text style={styles.notitiePreview} numberOfLines={2}>
+              {item.notitie}
+            </Text>
+          )}
+        </Pressable>
+      );
+    }
+
     if (item.source === "wedstrijd") {
       return (
         <Pressable
@@ -359,6 +444,9 @@ export default function AgendaModal({
                   Haptics.selectionAsync();
                   setAddType(opt.value);
                   setAddError("");
+                  if (opt.value === "ouder_gesprek") {
+                    setAgendaGesprekKind("normaal");
+                  }
                 }}
               >
                 <Text
@@ -373,7 +461,7 @@ export default function AgendaModal({
             ))}
           </View>
 
-          {addType === "wedstrijd" && (
+          {(addType === "wedstrijd" || addType === "ouder_gesprek") && (
             <>
               <Text style={styles.fieldLabel}>Sporter</Text>
               <View style={styles.sporterBox}>
@@ -413,20 +501,88 @@ export default function AgendaModal({
             </>
           )}
 
-          <Text style={styles.fieldLabel}>Titel</Text>
-          <TextInput
-            style={styles.textInput}
-            value={addTitel}
-            onChangeText={(t) => {
-              setAddTitel(t);
-              setAddError("");
-            }}
-            placeholder={
-              addType === "wedstrijd" ? "Wedstrijdnaam" : "bijv. Meivakantie, Koningsdag"
-            }
-            placeholderTextColor={Colors.textTertiary}
-            testID="agenda-add-titel"
-          />
+          {addType === "ouder_gesprek" && (
+            <>
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Type gesprek</Text>
+              <View style={styles.gesprekTypeRow}>
+                <Pressable
+                  style={[
+                    styles.gesprekTypeBtn,
+                    agendaGesprekKind === "normaal" && styles.gesprekTypeBtnActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setAgendaGesprekKind("normaal");
+                    setAddError("");
+                  }}
+                  testID="agenda-gesprek-type-normaal"
+                >
+                  <Text
+                    style={[
+                      styles.gesprekTypeBtnText,
+                      agendaGesprekKind === "normaal" && styles.gesprekTypeBtnTextActive,
+                    ]}
+                  >
+                    Gesprek
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.gesprekTypeBtn,
+                    agendaGesprekKind === "pop" && styles.gesprekTypeBtnActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setAgendaGesprekKind("pop");
+                    setAddError("");
+                  }}
+                  testID="agenda-gesprek-type-pop"
+                >
+                  <Text
+                    style={[
+                      styles.gesprekTypeBtnText,
+                      agendaGesprekKind === "pop" && styles.gesprekTypeBtnTextActive,
+                    ]}
+                  >
+                    POP-gesprek
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+
+          {addType !== "ouder_gesprek" && (
+            <>
+              <Text style={[styles.fieldLabel, addType === "wedstrijd" ? undefined : styles.fieldLabelSpaced]}>
+                Titel
+              </Text>
+              {addType === "wedstrijd" ? (
+                <TextInput
+                  style={styles.textInput}
+                  value={addTitel}
+                  onChangeText={(t) => {
+                    setAddTitel(t);
+                    setAddError("");
+                  }}
+                  placeholder="Wedstrijdnaam"
+                  placeholderTextColor={Colors.textTertiary}
+                  testID="agenda-add-titel"
+                />
+              ) : (
+                <TextInput
+                  style={styles.textInput}
+                  value={addTitel}
+                  onChangeText={(t) => {
+                    setAddTitel(t);
+                    setAddError("");
+                  }}
+                  placeholder="bijv. Meivakantie"
+                  placeholderTextColor={Colors.textTertiary}
+                  testID="agenda-add-titel"
+                />
+              )}
+            </>
+          )}
 
           <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Datum (DD-MM-JJJJ)</Text>
           <TextInput
@@ -448,7 +604,11 @@ export default function AgendaModal({
             style={styles.textInput}
             value={addLocatie}
             onChangeText={setAddLocatie}
-            placeholder="Laat leeg bij feestdagen zonder locatie"
+            placeholder={
+              addType === "vrij" || addType === "feestdag" || addType === "overig"
+                ? "Laat leeg bij feestdagen zonder locatie"
+                : "Optioneel"
+            }
             placeholderTextColor={Colors.textTertiary}
             testID="agenda-add-locatie"
           />
@@ -621,6 +781,12 @@ const styles = StyleSheet.create({
   typeTagKalender: {
     backgroundColor: "#4A5568",
   },
+  typeTagOuderPop: {
+    backgroundColor: Colors.primaryDark,
+  },
+  typeTagOuderGesprek: {
+    backgroundColor: "#5A5A5A",
+  },
   typeTagText: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
@@ -710,6 +876,34 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.textTertiary,
     marginBottom: 8,
+  },
+  gesprekTypeRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 4,
+  },
+  gesprekTypeBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    alignItems: "center",
+  },
+  gesprekTypeBtnActive: {
+    borderColor: Colors.primary,
+    backgroundColor: "#4A3820",
+  },
+  gesprekTypeBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_500Medium",
+    color: Colors.textSecondary,
+    textAlign: "center",
+  },
+  gesprekTypeBtnTextActive: {
+    color: Colors.primary,
+    fontFamily: "Inter_600SemiBold",
   },
   textInput: {
     backgroundColor: Colors.surfaceSecondary,

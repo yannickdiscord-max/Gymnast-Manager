@@ -157,7 +157,7 @@ export default function SporterScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + webBottomInset + 110 },
+          { paddingBottom: insets.bottom + webBottomInset + 176 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -221,6 +221,20 @@ export default function SporterScreen() {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.overigeZakenButton,
+            pressed && styles.overigeZakenButtonPressed,
+          ]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push({ pathname: "/overige-zaken/[sporterId]", params: { sporterId: sporter.id } });
+          }}
+          testID="overige-zaken-btn"
+        >
+          <Ionicons name="settings-outline" size={20} color={Colors.primary} />
+          <Text style={styles.overigeZakenButtonText}>Overige zaken</Text>
+        </Pressable>
         <Pressable
           style={({ pressed }) => [styles.scoresButton, pressed && styles.scoresButtonPressed]}
           onPress={() => {
@@ -460,6 +474,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     backgroundColor: Colors.background,
+  },
+  overigeZakenButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  overigeZakenButtonPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.98 }],
+  },
+  overigeZakenButtonText: {
+    fontSize: 16,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.primary,
   },
   scoresButton: {
     flexDirection: "row",

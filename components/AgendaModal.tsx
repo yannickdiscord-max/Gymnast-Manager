@@ -22,7 +22,7 @@ import Colors from "@/constants/colors";
 import {
   getUpcomingAgendaItems,
   getSporters,
-  addWedstrijd,
+  addWedstrijdForSporters,
   addCustomAgendaEvent,
   addOuderGesprek,
   DUPLICATE_WEDSTRIJD_ERROR,
@@ -76,6 +76,7 @@ export default function AgendaModal({
   const [addLocatie, setAddLocatie] = useState("");
   const [addNotitie, setAddNotitie] = useState("");
   const [addSporterId, setAddSporterId] = useState("");
+  const [addNiveaus, setAddNiveaus] = useState<string[]>([]);
   const [addError, setAddError] = useState("");
   const [savingAdd, setSavingAdd] = useState(false);
   const [agendaGesprekKind, setAgendaGesprekKind] = useState<OuderGesprekType>("normaal");
@@ -110,6 +111,9 @@ export default function AgendaModal({
   const sporterChoices = onlyFavorieten
     ? sporters.filter((s) => s.favoriet)
     : sporters;
+  const niveauChoices = Array.from(new Set(sporters.map((s) => s.niveau))).sort((a, b) =>
+    a.localeCompare(b)
+  );
 
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -119,6 +123,7 @@ export default function AgendaModal({
     setAddLocatie("");
     setAddNotitie("");
     setAddSporterId("");
+    setAddNiveaus([]);
     setAddError("");
     setAgendaGesprekKind("normaal");
     setPhase("add");
@@ -172,11 +177,11 @@ export default function AgendaModal({
     }
 
     if (addType === "wedstrijd") {
-      if (!addSporterId) {
+      if (addNiveaus.length === 0) {
         setAddError(
-          sporterChoices.length === 0 && onlyFavorieten
-            ? "Voeg eerst favoriete sporters toe."
-            : "Kies een sporter."
+          niveauChoices.length === 0
+            ? "Geen niveaus beschikbaar. Voeg eerst sporters toe."
+            : "Kies minimaal 1 niveau."
         );
         return;
       }
@@ -184,14 +189,19 @@ export default function AgendaModal({
         setAddError("Vul een titel in (wedstrijdnaam).");
         return;
       }
+      const matchingSporters = sporters.filter((s) => addNiveaus.includes(s.niveau));
+      if (matchingSporters.length === 0) {
+        setAddError("Er zijn geen sporters gevonden voor de gekozen niveaus.");
+        return;
+      }
       setSavingAdd(true);
       try {
-        await addWedstrijd(
-          addSporterId,
-          addTitel.trim(),
-          addDatum,
-          addLocatie.trim()
-        );
+        await addWedstrijdForSporters({
+          sporterIds: matchingSporters.map((s) => s.id),
+          naam: addTitel.trim(),
+          datum: addDatum,
+          locatie: addLocatie.trim(),
+        });
         await load();
         setPhase("list");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -199,7 +209,7 @@ export default function AgendaModal({
         if (e instanceof Error && e.message === DUPLICATE_WEDSTRIJD_ERROR) {
           Alert.alert(
             "Bestaat al",
-            "Er is al een wedstrijd met dezelfde gegevens voor deze sporter."
+            "Er is al een wedstrijd met dezelfde gegevens voor deze niveaus."
           );
         } else {
           setAddError("Opslaan mislukt. Controleer de datum (DD-MM-JJJJ).");
@@ -461,7 +471,47 @@ export default function AgendaModal({
             ))}
           </View>
 
-          {(addType === "wedstrijd" || addType === "ouder_gesprek") && (
+          {addType === "wedstrijd" && (
+            <>
+              <Text style={styles.fieldLabel}>Niveau(s)</Text>
+              <View style={styles.sporterBox}>
+                {niveauChoices.length === 0 ? (
+                  <Text style={styles.hintMuted}>Geen niveaus. Voeg eerst sporters toe.</Text>
+                ) : (
+                  niveauChoices.map((niveau) => {
+                    const selected = addNiveaus.includes(niveau);
+                    return (
+                      <Pressable
+                        key={niveau}
+                        style={[styles.sporterChip, selected && styles.sporterChipActive]}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          setAddNiveaus((prev) =>
+                            prev.includes(niveau)
+                              ? prev.filter((n) => n !== niveau)
+                              : [...prev, niveau]
+                          );
+                          setAddError("");
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.sporterChipText,
+                            selected && styles.sporterChipTextActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {niveau}
+                        </Text>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            </>
+          )}
+
+          {addType === "ouder_gesprek" && (
             <>
               <Text style={styles.fieldLabel}>Sporter</Text>
               <View style={styles.sporterBox}>

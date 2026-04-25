@@ -301,6 +301,123 @@ export async function deleteSporter(id: string): Promise<void> {
   await saveSporters(filtered);
   const gesprekken = await getAllOuderGesprekken();
   await saveAllOuderGesprekken(gesprekken.filter((g) => g.sporterId !== id));
+  await deleteBlessuresForSporter(id);
+}
+
+export interface SporterBlessures {
+  current: string[];
+  previous: string[];
+}
+
+const BLESSURES_KEY = "turnteam_blessures_v1";
+
+function normalizeBlessureNaam(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeBlessureList(values: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of values) {
+    const normalized = normalizeBlessureNaam(raw);
+    const key = normalized.toLocaleLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    result.push(normalized);
+  }
+  return result;
+}
+
+async function getBlessuresStoreRaw(): Promise<Record<string, SporterBlessures>> {
+  const data = await AsyncStorage.getItem(BLESSURES_KEY);
+  if (!data) return {};
+  const parsed = JSON.parse(data) as Record<string, SporterBlessures>;
+  if (!parsed || typeof parsed !== "object") return {};
+  return parsed;
+}
+
+async function saveBlessuresStoreRaw(store: Record<string, SporterBlessures>): Promise<void> {
+  await AsyncStorage.setItem(BLESSURES_KEY, JSON.stringify(store));
+}
+
+export async function getBlessuresForSporter(sporterId: string): Promise<SporterBlessures> {
+  const store = await getBlessuresStoreRaw();
+  const existing = store[sporterId];
+  if (!existing) return { current: [], previous: [] };
+  return {
+    current: normalizeBlessureList(existing.current ?? []),
+    previous: normalizeBlessureList(existing.previous ?? []),
+  };
+}
+
+export async function addCurrentBlessure(sporterId: string, blessureNaam: string): Promise<SporterBlessures> {
+  const normalized = normalizeBlessureNaam(blessureNaam);
+  if (!normalized) {
+    return getBlessuresForSporter(sporterId);
+  }
+  const store = await getBlessuresStoreRaw();
+  const existing = await getBlessuresForSporter(sporterId);
+  const lower = normalized.toLocaleLowerCase();
+  const nextCurrent = normalizeBlessureList([...existing.current, normalized]);
+  const nextPrevious = existing.previous.filter((item) => item.toLocaleLowerCase() !== lower);
+  store[sporterId] = { current: nextCurrent, previous: nextPrevious };
+  await saveBlessuresStoreRaw(store);
+  return store[sporterId];
+}
+
+export async function removeCurrentBlessure(sporterId: string, blessureNaam: string): Promise<SporterBlessures> {
+  const key = normalizeBlessureNaam(blessureNaam).toLocaleLowerCase();
+  const store = await getBlessuresStoreRaw();
+  const existing = await getBlessuresForSporter(sporterId);
+  store[sporterId] = {
+    current: existing.current.filter((item) => item.toLocaleLowerCase() !== key),
+    previous: existing.previous,
+  };
+  await saveBlessuresStoreRaw(store);
+  return store[sporterId];
+}
+
+export async function moveCurrentBlessureToPrevious(
+  sporterId: string,
+  blessureNaam: string
+): Promise<SporterBlessures> {
+  const normalized = normalizeBlessureNaam(blessureNaam);
+  const key = normalized.toLocaleLowerCase();
+  if (!normalized) {
+    return getBlessuresForSporter(sporterId);
+  }
+  const store = await getBlessuresStoreRaw();
+  const existing = await getBlessuresForSporter(sporterId);
+  const currentWithoutItem = existing.current.filter((item) => item.toLocaleLowerCase() !== key);
+  const alreadyInPrevious = existing.previous.some((item) => item.toLocaleLowerCase() === key);
+  store[sporterId] = {
+    current: currentWithoutItem,
+    previous: alreadyInPrevious ? existing.previous : [normalized, ...existing.previous],
+  };
+  await saveBlessuresStoreRaw(store);
+  return store[sporterId];
+}
+
+export async function removePreviousBlessure(
+  sporterId: string,
+  blessureNaam: string
+): Promise<SporterBlessures> {
+  const key = normalizeBlessureNaam(blessureNaam).toLocaleLowerCase();
+  const store = await getBlessuresStoreRaw();
+  const existing = await getBlessuresForSporter(sporterId);
+  store[sporterId] = {
+    current: existing.current,
+    previous: existing.previous.filter((item) => item.toLocaleLowerCase() !== key),
+  };
+  await saveBlessuresStoreRaw(store);
+  return store[sporterId];
+}
+
+async function deleteBlessuresForSporter(sporterId: string): Promise<void> {
+  const store = await getBlessuresStoreRaw();
+  if (!(sporterId in store)) return;
+  delete store[sporterId];
+  await saveBlessuresStoreRaw(store);
 }
 
 /** Eén training per kalenderdag (datum DD-MM-JJJJ); wie er aanwezig was. */
@@ -578,11 +695,13 @@ export interface ToestelScore {
 export interface Wedstrijd {
   id: string;
   sporterId: string;
+  sharedMatchId?: string;
   naam: string;
   datum: string;
   locatie: string;
   scores: Record<string, ToestelScore>;
   expectedDWaarde?: Record<string, number | null>;
+  targetNiveaus?: string[];
 }
 
 const WEDSTRIJDEN_KEY = "turnteam_wedstrijden";
@@ -600,7 +719,75 @@ function normalizeEuropeanDate(value: string): string {
 }
 
 function wedstrijdIdentityKey(w: Wedstrijd): string {
-  return `${w.sporterId}__${w.naam}__${normalizeEuropeanDate(w.datum)}__${w.locatie}`;
+  const targets =
+    w.targetNiveaus && w.targetNiveaus.length > 0
+      ? normalizeTargetNiveaus(w.targetNiveaus).join("|")
+      : "";
+  return `${w.sporterId}__${targets}__${w.naam}__${normalizeEuropeanDate(w.datum)}__${w.locatie}`;
+}
+
+function normalizeTargetNiveaus(values: string[] | undefined): string[] {
+  if (!values || values.length === 0) return [];
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+}
+
+async function expandNiveauWedstrijdenToPerSporter(all: Wedstrijd[]): Promise<Wedstrijd[]> {
+  const sporters = await getSporters();
+  const sportersByNiveau = new Map<string, Sporter[]>();
+  for (const s of sporters) {
+    const list = sportersByNiveau.get(s.niveau) ?? [];
+    list.push(s);
+    sportersByNiveau.set(s.niveau, list);
+  }
+
+  const expanded: Wedstrijd[] = [];
+  let changed = false;
+
+  for (const wedstrijd of all) {
+    const targets = normalizeTargetNiveaus(wedstrijd.targetNiveaus);
+    if (targets.length === 0) {
+      expanded.push(wedstrijd);
+      continue;
+    }
+    changed = true;
+    const targetSporters = sporters
+      .filter((s) => targets.includes(s.niveau))
+      .sort((a, b) => a.naam.localeCompare(b.naam));
+    if (targetSporters.length === 0) {
+      // Preserve data even if target group currently has no athletes.
+      expanded.push({ ...wedstrijd, targetNiveaus: [] });
+      continue;
+    }
+
+    const sharedId = wedstrijd.sharedMatchId ?? wedstrijd.id;
+    const preferredAnchor =
+      targetSporters.find((s) => s.id === wedstrijd.sporterId) ?? targetSporters[0];
+
+    for (const s of targetSporters) {
+      if (s.id === preferredAnchor.id) {
+        expanded.push({
+          ...wedstrijd,
+          sporterId: s.id,
+          sharedMatchId: sharedId,
+          targetNiveaus: [],
+        });
+      } else {
+        expanded.push({
+          ...wedstrijd,
+          id: Crypto.randomUUID(),
+          sporterId: s.id,
+          sharedMatchId: sharedId,
+          targetNiveaus: [],
+          scores: {},
+          expectedDWaarde: {},
+        });
+      }
+    }
+  }
+
+  return changed ? expanded : all;
 }
 
 function dedupeWedstrijdenById(all: Wedstrijd[]): Wedstrijd[] {
@@ -678,11 +865,21 @@ function dedupeAndMergeWedstrijden(all: Wedstrijd[]): Wedstrijd[] {
 async function getNormalizedWedstrijden(): Promise<Wedstrijd[]> {
   const data = await AsyncStorage.getItem(WEDSTRIJDEN_KEY);
   if (!data) return [];
-  const parsed = JSON.parse(data) as Wedstrijd[];
+  const parsed = (JSON.parse(data) as Wedstrijd[]).map((w) => ({
+    ...w,
+    targetNiveaus: normalizeTargetNiveaus(w.targetNiveaus),
+  }));
+  const expanded = await expandNiveauWedstrijdenToPerSporter(parsed);
   const migrated = await AsyncStorage.getItem(WEDSTRIJDEN_MIGRATED_KEY);
-  if (migrated === "1") return dedupeWedstrijdenById(parsed);
+  if (migrated === "1") {
+    const normalized = dedupeWedstrijdenById(expanded);
+    if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
+      await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(normalized));
+    }
+    return normalized;
+  }
 
-  const normalized = dedupeAndMergeWedstrijden(parsed);
+  const normalized = dedupeAndMergeWedstrijden(expanded);
   await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(normalized));
   await AsyncStorage.setItem(WEDSTRIJDEN_MIGRATED_KEY, "1");
   return normalized;
@@ -858,14 +1055,25 @@ export async function getUpcomingAgendaItems(options: {
     : null;
 
   const items: AgendaItem[] = [];
+  const grouped = new Map<string, Wedstrijd[]>();
   for (const w of all) {
-    if (favorietIds !== null && !favorietIds.has(w.sporterId)) continue;
-    const ts = wedstrijdDatumToTimestamp(w.datum);
+    const key = w.sharedMatchId ?? w.id;
+    const bucket = grouped.get(key) ?? [];
+    bucket.push(w);
+    grouped.set(key, bucket);
+  }
+  for (const [, group] of grouped) {
+    const representative = group[0];
+    const ts = wedstrijdDatumToTimestamp(representative.datum);
     if (ts === null || ts < todayStart) continue;
+    if (favorietIds !== null && !group.some((g) => favorietIds.has(g.sporterId))) continue;
+    const niveaus = [...new Set(group.map((g) => sporterById.get(g.sporterId)?.niveau).filter(Boolean) as string[])];
+    const label =
+      niveaus.length > 0 ? `Niveaus: ${niveaus.join(", ")}` : sporterById.get(representative.sporterId)?.naam ?? "Onbekend";
     items.push({
       source: "wedstrijd",
-      ...w,
-      sporterNaam: sporterById.get(w.sporterId)?.naam ?? "Onbekend",
+      ...representative,
+      sporterNaam: label,
     });
   }
 
@@ -916,16 +1124,19 @@ export async function addWedstrijd(
   naam: string,
   datum: string,
   locatie: string,
-  expectedDWaarde?: Record<string, number | null>
+  expectedDWaarde?: Record<string, number | null>,
+  options?: { targetNiveaus?: string[] }
 ): Promise<Wedstrijd> {
   const all = await getNormalizedWedstrijden();
   const normalizedDatum = normalizeEuropeanDate(datum);
+  const targetNiveaus = normalizeTargetNiveaus(options?.targetNiveaus);
   const existingIndex = all.findIndex(
     (w) =>
       w.sporterId === sporterId &&
       w.naam === naam &&
       normalizeEuropeanDate(w.datum) === normalizedDatum &&
-      w.locatie === locatie
+      w.locatie === locatie &&
+      normalizeTargetNiveaus(w.targetNiveaus).join("|") === targetNiveaus.join("|")
   );
   if (existingIndex !== -1) {
     throw new Error(DUPLICATE_WEDSTRIJD_ERROR);
@@ -938,10 +1149,55 @@ export async function addWedstrijd(
     locatie,
     scores: {},
     expectedDWaarde: expectedDWaarde ?? {},
+    targetNiveaus,
   };
   all.push(newWedstrijd);
   await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   return newWedstrijd;
+}
+
+export async function addWedstrijdForSporters(input: {
+  sporterIds: string[];
+  naam: string;
+  datum: string;
+  locatie: string;
+  expectedDWaardeBySporterId?: Record<string, Record<string, number | null>>;
+}): Promise<Wedstrijd[]> {
+  const all = await getNormalizedWedstrijden();
+  const sporterIds = [...new Set(input.sporterIds.filter(Boolean))];
+  if (sporterIds.length === 0) return [];
+  const normalizedDatum = normalizeEuropeanDate(input.datum);
+  const sharedMatchId = Crypto.randomUUID();
+  const created: Wedstrijd[] = [];
+  for (let i = 0; i < sporterIds.length; i++) {
+    const sporterId = sporterIds[i];
+    const expectedSnapshot = input.expectedDWaardeBySporterId?.[sporterId] ?? {};
+    const duplicate = all.find(
+      (w) =>
+        w.sporterId === sporterId &&
+        w.naam === input.naam &&
+        normalizeEuropeanDate(w.datum) === normalizedDatum &&
+        w.locatie === input.locatie
+    );
+    if (duplicate) {
+      throw new Error(DUPLICATE_WEDSTRIJD_ERROR);
+    }
+    const wedstrijd: Wedstrijd = {
+      id: Crypto.randomUUID(),
+      sporterId,
+      sharedMatchId,
+      naam: input.naam,
+      datum: normalizedDatum,
+      locatie: input.locatie,
+      scores: {},
+      expectedDWaarde: expectedSnapshot,
+      targetNiveaus: [],
+    };
+    all.push(wedstrijd);
+    created.push(wedstrijd);
+  }
+  await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
+  return created;
 }
 
 export async function saveWedstrijdScores(
@@ -1006,7 +1262,14 @@ export async function saveWedstrijdNaam(
   const all = await getNormalizedWedstrijden();
   const index = all.findIndex((w) => w.id === wedstrijdId);
   if (index !== -1) {
-    all[index].naam = naam;
+    const sharedId = all[index].sharedMatchId;
+    if (sharedId) {
+      for (const w of all) {
+        if (w.sharedMatchId === sharedId) w.naam = naam;
+      }
+    } else {
+      all[index].naam = naam;
+    }
     await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   }
 }
@@ -1020,9 +1283,21 @@ export async function saveWedstrijdInfo(
   const all = await getNormalizedWedstrijden();
   const index = all.findIndex((w) => w.id === wedstrijdId);
   if (index !== -1) {
-    all[index].naam = naam;
-    all[index].datum = normalizeEuropeanDate(datum);
-    all[index].locatie = locatie;
+    const sharedId = all[index].sharedMatchId;
+    const normalizedDatum = normalizeEuropeanDate(datum);
+    if (sharedId) {
+      for (const w of all) {
+        if (w.sharedMatchId === sharedId) {
+          w.naam = naam;
+          w.datum = normalizedDatum;
+          w.locatie = locatie;
+        }
+      }
+    } else {
+      all[index].naam = naam;
+      all[index].datum = normalizedDatum;
+      all[index].locatie = locatie;
+    }
     await AsyncStorage.setItem(WEDSTRIJDEN_KEY, JSON.stringify(dedupeWedstrijdenById(all)));
   }
 }

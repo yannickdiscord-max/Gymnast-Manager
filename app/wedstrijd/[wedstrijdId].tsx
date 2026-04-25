@@ -21,9 +21,11 @@ import * as Sharing from "expo-sharing";
 import Colors from "@/constants/colors";
 import {
   getWedstrijd,
+  getSporter,
   saveWedstrijdScores,
   saveWedstrijdInfo,
   TOESTELLEN,
+  type Sporter,
   type Wedstrijd,
   type ToestelScore,
 } from "@/lib/storage";
@@ -33,6 +35,7 @@ export default function WedstrijdScreen() {
   const insets = useSafeAreaInsets();
 
   const [wedstrijd, setWedstrijd] = useState<Wedstrijd | null>(null);
+  const [sporter, setSporter] = useState<Sporter | null>(null);
   const [scores, setScores] = useState<Record<string, { dScore: string; eScore: string; penalty: string }>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,6 +62,8 @@ export default function WedstrijdScreen() {
     setLoading(true);
     const data = await getWedstrijd(wedstrijdId);
     if (data) {
+      const sporterData = await getSporter(data.sporterId);
+      setSporter(sporterData ?? null);
       setWedstrijd(data);
       setEditNaam(data.naam);
       setEditDatum(data.datum);
@@ -425,8 +430,16 @@ export default function WedstrijdScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Pressable onPress={openEditModal} hitSlop={8} testID="wedstrijd-details-edit-btn">
+          <Pressable
+            style={styles.headerInfoButton}
+            onPress={openEditModal}
+            hitSlop={8}
+            testID="wedstrijd-details-edit-btn"
+          >
             <Text style={styles.headerTitle} numberOfLines={1}>{wedstrijd.naam}</Text>
+            <Text style={styles.headerAthlete} numberOfLines={1}>
+              {sporter?.naam ?? "Onbekend"}
+            </Text>
             <Text style={styles.headerSub}>{wedstrijd.datum} · {wedstrijd.locatie}</Text>
           </Pressable>
         </View>
@@ -642,8 +655,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   headerCenter: { flex: 1, alignItems: "center", paddingHorizontal: 8 },
-  headerTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold", color: Colors.text },
-  headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", color: Colors.textTertiary, marginTop: 2 },
+  headerInfoButton: { alignItems: "center", maxWidth: "100%" },
+  headerTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold", color: Colors.text, textAlign: "center" },
+  headerAthlete: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: Colors.primary, marginTop: 2, textAlign: "center" },
+  headerSub: { fontSize: 12, fontFamily: "Inter_400Regular", color: Colors.textTertiary, marginTop: 2, textAlign: "center" },
   content: { paddingHorizontal: 20, paddingTop: 4, gap: 12 },
   grandTotalCard: {
     backgroundColor: Colors.primary,

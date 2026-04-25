@@ -12,7 +12,13 @@ import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
-import { getSporter, getSporterAttendanceSummary, type Sporter } from "@/lib/storage";
+import {
+  getBlessuresForSporter,
+  getSporter,
+  getSporterAttendanceSummary,
+  type Sporter,
+  type SporterBlessures,
+} from "@/lib/storage";
 
 export default function OverigeZakenScreen() {
   const { sporterId } = useLocalSearchParams<{ sporterId: string }>();
@@ -22,6 +28,7 @@ export default function OverigeZakenScreen() {
   const [attendance, setAttendance] = useState<Awaited<
     ReturnType<typeof getSporterAttendanceSummary>
   > | null>(null);
+  const [blessures, setBlessures] = useState<SporterBlessures>({ current: [], previous: [] });
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
@@ -29,12 +36,14 @@ export default function OverigeZakenScreen() {
   const loadAll = useCallback(async () => {
     if (!sporterId) return;
     setLoading(true);
-    const [data, att] = await Promise.all([
+    const [data, att, injuryData] = await Promise.all([
       getSporter(sporterId),
       getSporterAttendanceSummary(sporterId),
+      getBlessuresForSporter(sporterId),
     ]);
     setSporter(data || null);
     setAttendance(att);
+    setBlessures(injuryData);
     setLoading(false);
   }, [sporterId]);
 
@@ -137,7 +146,14 @@ export default function OverigeZakenScreen() {
           testID="blessures-btn"
         >
           <Ionicons name="medkit-outline" size={20} color={Colors.text} />
-          <Text style={styles.actionButtonText}>Blessures beheren</Text>
+          <View style={styles.blessureButtonTextWrap}>
+            <Text style={styles.actionButtonText}>Blessures beheren</Text>
+            <Text style={styles.blessurePreviewText} numberOfLines={1}>
+              {blessures.current.length === 0
+                ? "Geen huidige blessures"
+                : `Huidig: ${blessures.current.join(", ")}`}
+            </Text>
+          </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
         </Pressable>
       </ScrollView>
@@ -254,9 +270,17 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.98 }],
   },
   actionButtonText: {
-    flex: 1,
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
     color: Colors.text,
+  },
+  blessureButtonTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  blessurePreviewText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textTertiary,
   },
 });

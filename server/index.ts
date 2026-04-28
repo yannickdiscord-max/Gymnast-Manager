@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
@@ -240,8 +241,9 @@ function setupErrorHandler(app: express.Application) {
   server.listen(
     {
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host: "192.168.1.16",
+      //reusePort: true
+      //host: "0.0.0.0" 
     },
     () => {
       log(`express server serving on port ${port}`);

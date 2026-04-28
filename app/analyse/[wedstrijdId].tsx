@@ -350,6 +350,16 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_700Bold",
     color: Colors.text,
   },
+  expectedInput: {
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+    color: Colors.text,
+    minWidth: 72,
+    textAlign: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    paddingVertical: 4,
+  },
   compareDivider: { paddingHorizontal: 8 },
 
   diffRow: {

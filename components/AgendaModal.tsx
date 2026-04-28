@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -29,12 +29,24 @@ import {
   MISSING_AGENDA_TITEL,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
+  NIVEAUS,
   type AgendaItem,
   type AgendaItemKalender,
   type AgendaKalenderCategorie,
   type OuderGesprekType,
   type Sporter,
 } from "@/lib/storage";
+
+function compareSportersByNiveauThenName(a: Sporter, b: Sporter): number {
+  const ia = NIVEAUS.indexOf(a.niveau as (typeof NIVEAUS)[number]);
+  const ib = NIVEAUS.indexOf(b.niveau as (typeof NIVEAUS)[number]);
+  const rankA = ia === -1 ? 999 : ia;
+  const rankB = ib === -1 ? 999 : ib;
+  if (rankA !== rankB) return rankA - rankB;
+  return a.naam.localeCompare(b.naam, "nl");
+}
+
+const WEDSTRIJD_ANDERS_LABEL = "Anders";
 
 const WINDOW_H = Dimensions.get("window").height;
 const LIST_MAX_H = WINDOW_H * 0.68;
@@ -77,6 +89,9 @@ export default function AgendaModal({
   const [addNotitie, setAddNotitie] = useState("");
   const [addSporterId, setAddSporterId] = useState("");
   const [addNiveaus, setAddNiveaus] = useState<string[]>([]);
+  /** Handmatige sporterkeuze (alle niveaus door elkaar); alleen actief bij deze modus. */
+  const [addWedstrijdAnders, setAddWedstrijdAnders] = useState(false);
+  const [addWedstrijdSporterIds, setAddWedstrijdSporterIds] = useState<string[]>([]);
   const [addError, setAddError] = useState("");
   const [savingAdd, setSavingAdd] = useState(false);
   const [agendaGesprekKind, setAgendaGesprekKind] = useState<OuderGesprekType>("normaal");
@@ -115,6 +130,11 @@ export default function AgendaModal({
     a.localeCompare(b)
   );
 
+  const sportersSortedVoorWedstrijd = useMemo(
+    () => [...sporters].sort(compareSportersByNiveauThenName),
+    [sporters]
+  );
+
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setAddType("vrij");
@@ -124,6 +144,8 @@ export default function AgendaModal({
     setAddNotitie("");
     setAddSporterId("");
     setAddNiveaus([]);
+    setAddWedstrijdAnders(false);
+    setAddWedstrijdSporterIds([]);
     setAddError("");
     setAgendaGesprekKind("normaal");
     setPhase("add");
@@ -177,11 +199,20 @@ export default function AgendaModal({
     }
 
     if (addType === "wedstrijd") {
-      if (addNiveaus.length === 0) {
+      if (addWedstrijdAnders) {
+        if (addWedstrijdSporterIds.length === 0) {
+          setAddError(
+            sporters.length === 0
+              ? "Geen sporters. Voeg eerst sporters toe."
+              : "Kies minimaal één sporter in de lijst."
+          );
+          return;
+        }
+      } else if (addNiveaus.length === 0) {
         setAddError(
           niveauChoices.length === 0
             ? "Geen niveaus beschikbaar. Voeg eerst sporters toe."
-            : "Kies minimaal 1 niveau."
+            : "Kies minimaal 1 niveau, of gebruik Anders om sporters te kiezen."
         );
         return;
       }
@@ -189,9 +220,15 @@ export default function AgendaModal({
         setAddError("Vul een titel in (wedstrijdnaam).");
         return;
       }
-      const matchingSporters = sporters.filter((s) => addNiveaus.includes(s.niveau));
+      const matchingSporters = addWedstrijdAnders
+        ? sporters.filter((s) => addWedstrijdSporterIds.includes(s.id))
+        : sporters.filter((s) => addNiveaus.includes(s.niveau));
       if (matchingSporters.length === 0) {
-        setAddError("Er zijn geen sporters gevonden voor de gekozen niveaus.");
+        setAddError(
+          addWedstrijdAnders
+            ? "Geen geldige sporters gevonden voor de selectie."
+            : "Er zijn geen sporters gevonden voor de gekozen niveaus."
+        );
         return;
       }
       setSavingAdd(true);
@@ -209,7 +246,9 @@ export default function AgendaModal({
         if (e instanceof Error && e.message === DUPLICATE_WEDSTRIJD_ERROR) {
           Alert.alert(
             "Bestaat al",
-            "Er is al een wedstrijd met dezelfde gegevens voor deze niveaus."
+            addWedstrijdAnders
+              ? "Er is al een wedstrijd met dezelfde gegevens voor (een van) deze sporters."
+              : "Er is al een wedstrijd met dezelfde gegevens voor deze niveaus."
           );
         } else {
           setAddError("Opslaan mislukt. Controleer de datum (DD-MM-JJJJ).");
@@ -479,13 +518,15 @@ export default function AgendaModal({
                   <Text style={styles.hintMuted}>Geen niveaus. Voeg eerst sporters toe.</Text>
                 ) : (
                   niveauChoices.map((niveau) => {
-                    const selected = addNiveaus.includes(niveau);
+                    const selected = !addWedstrijdAnders && addNiveaus.includes(niveau);
                     return (
                       <Pressable
                         key={niveau}
                         style={[styles.sporterChip, selected && styles.sporterChipActive]}
                         onPress={() => {
                           Haptics.selectionAsync();
+                          setAddWedstrijdAnders(false);
+                          setAddWedstrijdSporterIds([]);
                           setAddNiveaus((prev) =>
                             prev.includes(niveau)
                               ? prev.filter((n) => n !== niveau)
@@ -507,7 +548,102 @@ export default function AgendaModal({
                     );
                   })
                 )}
+                {niveauChoices.length > 0 && (
+                  <Pressable
+                    style={[
+                      styles.sporterChip,
+                      addWedstrijdAnders && styles.sporterChipActive,
+                    ]}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setAddWedstrijdAnders(true);
+                      setAddNiveaus([]);
+                      setAddError("");
+                    }}
+                    testID="agenda-wedstrijd-anders"
+                  >
+                    <Text
+                      style={[
+                        styles.sporterChipText,
+                        addWedstrijdAnders && styles.sporterChipTextActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {WEDSTRIJD_ANDERS_LABEL}
+                    </Text>
+                  </Pressable>
+                )}
               </View>
+              {addWedstrijdAnders && sporters.length > 0 && (
+                <>
+                  <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>
+                    Sporters in deze wedstrijd
+                  </Text>
+                  <Text style={styles.hintMutedSmall}>
+                    Tik op elke sporter die meedoet (ook één sporter of mix van niveaus).
+                  </Text>
+                  <ScrollView
+                    style={styles.wedstrijdSporterPickScroll}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator
+                  >
+                    {sportersSortedVoorWedstrijd.map((s) => {
+                      const selected = addWedstrijdSporterIds.includes(s.id);
+                      return (
+                        <Pressable
+                          key={s.id}
+                          style={[
+                            styles.wedstrijdSporterRow,
+                            selected && styles.wedstrijdSporterRowActive,
+                          ]}
+                          onPress={() => {
+                            Haptics.selectionAsync();
+                            setAddWedstrijdSporterIds((prev) =>
+                              prev.includes(s.id)
+                                ? prev.filter((id) => id !== s.id)
+                                : [...prev, s.id]
+                            );
+                            setAddError("");
+                          }}
+                          testID={`agenda-wedstrijd-sporter-${s.id}`}
+                        >
+                          <View style={styles.wedstrijdSporterRowText}>
+                            <Text
+                              style={[
+                                styles.wedstrijdSporterNaam,
+                                selected && styles.wedstrijdSporterNaamSelected,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {s.naam}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.wedstrijdSporterNiveau,
+                                selected && styles.wedstrijdSporterNiveauSelected,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {s.niveau}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name={selected ? "checkbox" : "square-outline"}
+                            size={22}
+                            color={selected ? Colors.white : Colors.textSecondary}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </>
+              )}
+              {addWedstrijdAnders && sporters.length === 0 && (
+                <Text style={styles.hintMuted}>
+                  Geen sporters om te kiezen. Voeg eerst sporters toe.
+                </Text>
+              )}
             </>
           )}
 
@@ -926,6 +1062,55 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: Colors.textTertiary,
     marginBottom: 8,
+  },
+  hintMutedSmall: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textTertiary,
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  wedstrijdSporterPickScroll: {
+    maxHeight: Math.min(WINDOW_H * 0.34, 280),
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+  },
+  wedstrijdSporterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.borderLight,
+    gap: 12,
+  },
+  wedstrijdSporterRowActive: {
+    backgroundColor: Colors.primaryDark,
+  },
+  wedstrijdSporterRowText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  wedstrijdSporterNaam: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.text,
+  },
+  wedstrijdSporterNiveau: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  wedstrijdSporterNaamSelected: {
+    color: Colors.white,
+  },
+  wedstrijdSporterNiveauSelected: {
+    color: "rgba(255,255,255,0.85)",
   },
   gesprekTypeRow: {
     flexDirection: "row",

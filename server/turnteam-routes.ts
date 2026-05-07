@@ -12,6 +12,7 @@ import {
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_TRAINING_SESSION_DATUM,
+  LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
 } from "../shared/turnteam-domain";
@@ -556,6 +557,78 @@ export function registerTurnteamRoutes(app: Express): void {
           msg === INVALID_AGENDA_DATUM
         ) {
           res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
+    }),
+  );
+
+  api.patch(
+    "/agenda/lesplan/:id",
+    asyncHandler(async (req, res) => {
+      const actor = String(req.body?.viewerUserId ?? "").trim();
+      if (!actor) {
+        badRequest(res, "viewerUserId is required");
+        return;
+      }
+      const lv = req.body?.lesplanVisibility;
+      const lesplanVisibility = lv === "private" ? "private" : "public";
+      try {
+        const updated = await svc.updateLesplanById(
+          pid(req, "id"),
+          {
+            datum: String(req.body?.datum ?? ""),
+            notitie: String(req.body?.notitie ?? ""),
+            lesplanVisibility,
+          },
+          actor,
+        );
+        if (!updated) {
+          res.status(404).json({ message: "Not found" });
+          return;
+        }
+        res.json(updated);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === LESPLAN_ACTION_FORBIDDEN) {
+          res.status(403).json({ message: msg });
+          return;
+        }
+        if (msg === MISSING_AGENDA_LESPLAN_PLAN || msg === INVALID_AGENDA_DATUM) {
+          res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
+    }),
+  );
+
+  api.delete(
+    "/agenda/lesplan/:id",
+    asyncHandler(async (req, res) => {
+      const actorRaw = req.query.viewerUserId;
+      const actor =
+        typeof actorRaw === "string"
+          ? actorRaw.trim()
+          : Array.isArray(actorRaw)
+            ? String(actorRaw[0] ?? "").trim()
+            : "";
+      if (!actor) {
+        badRequest(res, "viewerUserId query parameter is required");
+        return;
+      }
+      try {
+        const ok = await svc.deleteLesplanById(pid(req, "id"), actor);
+        if (!ok) {
+          res.status(404).json({ message: "Not found" });
+          return;
+        }
+        res.status(204).end();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === LESPLAN_ACTION_FORBIDDEN) {
+          res.status(403).json({ message: msg });
           return;
         }
         throw e;

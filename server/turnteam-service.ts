@@ -22,6 +22,7 @@ import {
   INVALID_OUDER_GESPREK_DATUM,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
+  LESPLAN_ACTION_FORBIDDEN,
   type LesplanVisibility,
   ONDERDELEN_PER_TOESTEL,
   TOESTELLEN,
@@ -47,8 +48,13 @@ import {
 const META_WEDSTRIJDEN_MIGRATED = "wedstrijden_migrated";
 
 function normalizeAgendaKalenderCategorieFromDb(raw: string): AgendaKalenderCategorie {
-  if (raw === "vrij" || raw === "overig" || raw === "lesplan") return raw;
-  if (raw === "feestdag" || raw === "nationale_feestdag") return "overig";
+  const key = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (key === "vrij") return "vrij";
+  if (key === "lesplan") return "lesplan";
+  if (key === "feestdag" || key === "nationale_feestdag") return "overig";
+  if (key === "overig") return "overig";
   return "overig";
 }
 
@@ -67,6 +73,20 @@ function shouldIncludeKalenderEventForViewer(
   if (owner === null) return true;
   if (viewerUserId === undefined || viewerUserId === "") return true;
   return viewerUserId === owner;
+}
+
+function assertLesplanActorAllowed(
+  rowOwnerUserId: string | null | undefined,
+  actorUserId: string,
+): void {
+  const owner = rowOwnerUserId?.trim() ?? "";
+  const actor = actorUserId.trim();
+  if (!actor) {
+    throw new Error(LESPLAN_ACTION_FORBIDDEN);
+  }
+  if (owner && owner !== actor) {
+    throw new Error(LESPLAN_ACTION_FORBIDDEN);
+  }
 }
 const CATALOG_ID = "default";
 
@@ -932,6 +952,96 @@ export async function addCustomAgendaEvent(
     ownerUserId: cat === "lesplan" ? ownerId : null,
   });
   return ev;
+}
+
+export async function updateLesplanById(
+  id: string,
+  input: {
+    datum: string;
+    notitie: string;
+    lesplanVisibility: LesplanVisibility;
+  },
+  actorUserId: string,
+): Promise<CustomAgendaEvent | null> {
+  const rows = await db
+    .select()
+    .from(schema.customAgendaEvents)
+    .where(eq(schema.customAgendaEvents.id, id))
+    .limit(1);
+  if (!rows[0]) return null;
+  const row = rows[0];
+  const categorie = normalizeAgendaKalenderCategorieFromDb(row.categorie);
+  const looksLesplan =
+    categorie === "lesplan" ||
+    row.lesplanVisibility === "private" ||
+    row.lesplanVisibility === "public";
+  if (!looksLesplan) return null;
+
+  assertLesplanActorAllowed(row.ownerUserId, actorUserId);
+
+  const trimmedNotitie = input.notitie.trim();
+  const normalizedDatum = normalizeEuropeanDate(input.datum);
+  if (wedstrijdDatumToTimestamp(normalizedDatum) === null) {
+    throw new Error(INVALID_AGENDA_DATUM);
+  }
+  if (!trimmedNotitie) {
+    throw new Error(MISSING_AGENDA_LESPLAN_PLAN);
+  }
+
+  const lesplanVis: LesplanVisibility =
+    input.lesplanVisibility === "private" ? "private" : "public";
+  const actor = actorUserId.trim();
+  let ownerId = row.ownerUserId?.trim() || null;
+  if (!ownerId) {
+    ownerId = actor;
+  }
+
+  await db
+    .update(schema.customAgendaEvents)
+    .set({
+      datum: normalizedDatum,
+      notitie: trimmedNotitie,
+      lesplanVisibility: lesplanVis,
+      ownerUserId: ownerId,
+    })
+    .where(eq(schema.customAgendaEvents.id, id));
+
+  return {
+    id: row.id,
+    titel: row.titel,
+    datum: normalizedDatum,
+    locatie: row.locatie,
+    categorie: "lesplan",
+    notitie: trimmedNotitie,
+    lesplanVisibility: lesplanVis,
+    ownerUserId: ownerId,
+  };
+}
+
+export async function deleteLesplanById(
+  id: string,
+  actorUserId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select()
+    .from(schema.customAgendaEvents)
+    .where(eq(schema.customAgendaEvents.id, id))
+    .limit(1);
+  if (!rows[0]) return false;
+  const row = rows[0];
+  const categorie = normalizeAgendaKalenderCategorieFromDb(row.categorie);
+  const looksLesplan =
+    categorie === "lesplan" ||
+    row.lesplanVisibility === "private" ||
+    row.lesplanVisibility === "public";
+  if (!looksLesplan) return false;
+
+  assertLesplanActorAllowed(row.ownerUserId, actorUserId);
+
+  await db
+    .delete(schema.customAgendaEvents)
+    .where(eq(schema.customAgendaEvents.id, id));
+  return true;
 }
 
 export async function addWedstrijd(

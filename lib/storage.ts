@@ -45,6 +45,7 @@ export {
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_TRAINING_SESSION_DATUM,
+  LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   NIVEAU_MINIMUM,
@@ -329,6 +330,34 @@ export async function addCustomAgendaEvent(
       ownerUserId: options?.ownerUserId,
     }),
   });
+}
+
+export async function updateLesplan(
+  id: string,
+  input: {
+    datum: string;
+    notitie: string;
+    lesplanVisibility: LesplanVisibility;
+    viewerUserId: string;
+  },
+): Promise<CustomAgendaEvent> {
+  return apiFetch(`/api/agenda/lesplan/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      datum: input.datum,
+      notitie: input.notitie,
+      lesplanVisibility: input.lesplanVisibility,
+      viewerUserId: input.viewerUserId,
+    }),
+  });
+}
+
+export async function deleteLesplan(id: string, viewerUserId: string): Promise<void> {
+  const params = new URLSearchParams({ viewerUserId });
+  await apiFetch(
+    `/api/agenda/lesplan/${encodeURIComponent(id.trim())}?${params.toString()}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function addWedstrijd(

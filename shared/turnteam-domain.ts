@@ -206,7 +206,10 @@ export interface CustomAgendaEvent {
   notitie: string;
   /** Only for `lesplan`; omitted or empty when not applicable. */
   lesplanVisibility?: LesplanVisibility | "";
-  /** Creator user id when multi-user auth exists; private lesplans use this for visibility. */
+  /**
+   * For `lesplan`: creating trainer id. Private lesplans also use this for visibility
+   * (only that trainer sees them when `lesplanVisibility` is private).
+   */
   ownerUserId?: string | null;
 }
 
@@ -258,6 +261,9 @@ export const DUPLICATE_WEDSTRIJD_ERROR = "DUPLICATE_WEDSTRIJD_ERROR";
 export const MISSING_AGENDA_TITEL = "MISSING_AGENDA_TITEL";
 export const MISSING_AGENDA_LESPLAN_PLAN = "MISSING_AGENDA_LESPLAN_PLAN";
 export const INVALID_AGENDA_DATUM = "INVALID_AGENDA_DATUM";
+
+/** Editing or deleting a lesplan is not allowed for this trainer. */
+export const LESPLAN_ACTION_FORBIDDEN = "LESPLAN_ACTION_FORBIDDEN";
 
 export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";
 

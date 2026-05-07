@@ -6,6 +6,8 @@ import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AuthProvider, useAuth } from "@/components/AuthProvider";
+import TrainerLoginScreen from "@/components/TrainerLoginScreen";
 import { queryClient } from "@/lib/query-client";
 import { maybeMigrateLocalDataToServer } from "@/lib/migrate-legacy-to-server";
 import Colors from "@/constants/colors";
@@ -14,6 +16,12 @@ import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_7
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
+  const { session } = useAuth();
+
+  if (!session) {
+    return <TrainerLoginScreen />;
+  }
+
   return (
     <Stack
       screenOptions={{
@@ -55,13 +63,15 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={styles.root}>
-          <KeyboardProvider>
-            <RootLayoutNav />
-          </KeyboardProvider>
-        </GestureHandlerRootView>
-      </QueryClientProvider>
+      <AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <GestureHandlerRootView style={styles.root}>
+            <KeyboardProvider>
+              <RootLayoutNav />
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </QueryClientProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

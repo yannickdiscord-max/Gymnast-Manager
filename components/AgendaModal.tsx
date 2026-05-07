@@ -19,24 +19,47 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Colors from "@/constants/colors";
+import { getTrainerDisplayNameFromUserId } from "@/lib/auth";
+import { ApiError } from "@/lib/api";
 import {
   getUpcomingAgendaItems,
   getSporters,
   addWedstrijdForSporters,
   addCustomAgendaEvent,
   addOuderGesprek,
+  updateLesplan,
+  deleteLesplan,
+  AGENDA_CATEGORIE_LABELS,
   DUPLICATE_WEDSTRIJD_ERROR,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
+  LESPLAN_ACTION_FORBIDDEN,
   NIVEAUS,
   type AgendaItem,
   type AgendaItemKalender,
   type AgendaKalenderCategorie,
+  type CustomAgendaEvent,
   type OuderGesprekType,
   type Sporter,
 } from "@/lib/storage";
+
+function toAgendaKalenderFromSaved(ev: CustomAgendaEvent): AgendaItemKalender {
+  const cat = ev.categorie as AgendaKalenderCategorie;
+  return {
+    source: "kalender",
+    id: ev.id,
+    titel: ev.titel,
+    datum: ev.datum,
+    locatie: ev.locatie,
+    categorie: cat,
+    notitie: ev.notitie,
+    categorieLabel: AGENDA_CATEGORIE_LABELS[cat],
+    lesplanVisibility: ev.lesplanVisibility,
+    ownerUserId: ev.ownerUserId,
+  };
+}
 
 function compareSportersByNiveauThenName(a: Sporter, b: Sporter): number {
   const ia = NIVEAUS.indexOf(a.niveau as (typeof NIVEAUS)[number]);
@@ -68,6 +91,7 @@ type Props = {
   visible: boolean;
   onClose: () => void;
   onlyFavorieten: boolean;
+  viewerUserId?: string;
   webBottomInset?: number;
 };
 
@@ -75,6 +99,7 @@ export default function AgendaModal({
   visible,
   onClose,
   onlyFavorieten,
+  viewerUserId,
   webBottomInset = 0,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -100,12 +125,18 @@ export default function AgendaModal({
   const [addLesplanPublic, setAddLesplanPublic] = useState(true);
   /** Inline lesplan detail in this sheet (no system Alert). */
   const [lesplanDetail, setLesplanDetail] = useState<AgendaItemKalender | null>(null);
+  const [lesplanEditMode, setLesplanEditMode] = useState(false);
+  const [lesplanEditDatum, setLesplanEditDatum] = useState("");
+  const [lesplanEditNotitie, setLesplanEditNotitie] = useState("");
+  const [lesplanEditPublic, setLesplanEditPublic] = useState(true);
+  const [lesplanEditError, setLesplanEditError] = useState("");
+  const [lesplanSaving, setLesplanSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [data, sportList] = await Promise.all([
-        getUpcomingAgendaItems({ onlyFavorieten }),
+        getUpcomingAgendaItems({ onlyFavorieten, viewerUserId }),
         getSporters(),
       ]);
       setItems(data);
@@ -113,7 +144,7 @@ export default function AgendaModal({
     } finally {
       setLoading(false);
     }
-  }, [onlyFavorieten]);
+  }, [onlyFavorieten, viewerUserId]);
 
   useEffect(() => {
     if (visible) {
@@ -126,6 +157,9 @@ export default function AgendaModal({
       setPhase("list");
       setAddError("");
       setLesplanDetail(null);
+      setLesplanEditMode(false);
+      setLesplanEditError("");
+      setLesplanSaving(false);
     }
   }, [visible]);
 
@@ -143,12 +177,129 @@ export default function AgendaModal({
 
   const closeLesplanDetail = () => {
     Haptics.selectionAsync();
+    setLesplanEditMode(false);
+    setLesplanEditError("");
     setLesplanDetail(null);
+  };
+
+  const openLesplanEdit = () => {
+    if (!lesplanDetail) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLesplanEditDatum(lesplanDetail.datum);
+    setLesplanEditNotitie(lesplanDetail.notitie);
+    setLesplanEditPublic(lesplanDetail.lesplanVisibility !== "private");
+    setLesplanEditError("");
+    setLesplanEditMode(true);
+  };
+
+  const cancelLesplanEdit = () => {
+    Haptics.selectionAsync();
+    setLesplanEditMode(false);
+    setLesplanEditError("");
+  };
+
+  const saveLesplanEdit = async () => {
+    if (!lesplanDetail || !viewerUserId?.trim()) return;
+    const viewer = viewerUserId.trim();
+    setLesplanEditError("");
+    if (!lesplanEditDatum.trim()) {
+      setLesplanEditError("Vul een datum in.");
+      return;
+    }
+    if (!lesplanEditNotitie.trim()) {
+      setLesplanEditError("Beschrijf het lesplan.");
+      return;
+    }
+    setLesplanSaving(true);
+    try {
+      const updated = await updateLesplan(lesplanDetail.id.trim(), {
+        datum: lesplanEditDatum.trim(),
+        notitie: lesplanEditNotitie.trim(),
+        lesplanVisibility: lesplanEditPublic ? "public" : "private",
+        viewerUserId: viewer,
+      });
+      setLesplanDetail(toAgendaKalenderFromSaved(updated));
+      setLesplanEditMode(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      try {
+        await load();
+      } catch {
+        /* Opgeslagen; alleen de lijst kon niet verversen */
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        setLesplanEditError("Je mag dit lesplan niet wijzigen.");
+      } else if (e instanceof ApiError && e.status === 404) {
+        setLesplanEditError("Lesplan niet gevonden.");
+      } else if (e instanceof Error && e.message === INVALID_AGENDA_DATUM) {
+        setLesplanEditError("Ongeldige datum. Gebruik DD-MM-JJJJ.");
+      } else if (e instanceof Error && e.message === MISSING_AGENDA_LESPLAN_PLAN) {
+        setLesplanEditError("Beschrijf het lesplan.");
+      } else if (e instanceof Error && e.message === LESPLAN_ACTION_FORBIDDEN) {
+        setLesplanEditError("Je mag dit lesplan niet wijzigen.");
+      } else if (e instanceof ApiError) {
+        setLesplanEditError(e.message || "Opslaan mislukt.");
+      } else {
+        setLesplanEditError("Opslaan mislukt.");
+      }
+    } finally {
+      setLesplanSaving(false);
+    }
+  };
+
+  const confirmDeleteLesplan = () => {
+    if (!lesplanDetail || !viewerUserId?.trim()) return;
+    Alert.alert(
+      "Lesplan verwijderen?",
+      "Weet je zeker dat je dit lesplan wilt verwijderen?",
+      [
+        { text: "Annuleren", style: "cancel" },
+        {
+          text: "Verwijderen",
+          style: "destructive",
+          onPress: () => void deleteLesplanConfirmed(),
+        },
+      ],
+    );
+  };
+
+  const deleteLesplanConfirmed = async () => {
+    if (!lesplanDetail || !viewerUserId?.trim()) return;
+    try {
+      await deleteLesplan(lesplanDetail.id.trim(), viewerUserId.trim());
+      closeLesplanDetail();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      try {
+        await load();
+      } catch {
+        /* verwijderd; alleen verversen mislukte */
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403) {
+        Alert.alert("Niet toegestaan", "Je mag dit lesplan niet verwijderen.");
+      } else if (e instanceof ApiError && e.status === 404) {
+        Alert.alert("Fout", "Lesplan niet gevonden.");
+      } else if (e instanceof ApiError) {
+        Alert.alert("Fout", e.message || "Verwijderen mislukt.");
+      } else {
+        Alert.alert("Fout", "Verwijderen mislukt.");
+      }
+    }
+  };
+
+  const lesplanHeaderBack = () => {
+    if (lesplanEditMode) {
+      cancelLesplanEdit();
+      return;
+    }
+    closeLesplanDetail();
   };
 
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLesplanDetail(null);
+    setLesplanEditMode(false);
+    setLesplanEditError("");
     setAddType("vrij");
     setAddTitel("");
     setAddDatum("");
@@ -291,6 +442,7 @@ export default function AgendaModal({
           addNotitie.trim(),
           {
             lesplanVisibility: addLesplanPublic ? "public" : "private",
+            ownerUserId: viewerUserId ?? null,
           },
         );
         await load();
@@ -477,52 +629,203 @@ export default function AgendaModal({
 
   const listMinHeight = items.length >= 2 ? LIST_MIN_TWO_ROWS : undefined;
 
+  const lesplanDetailTrainerLabel = lesplanDetail
+    ? getTrainerDisplayNameFromUserId(lesplanDetail.ownerUserId)
+    : null;
+  const viewerTrim = viewerUserId?.trim() ?? "";
+  const lesplanOwnerTrim = lesplanDetail?.ownerUserId?.trim() ?? "";
+  const lesplanDetailShowOtherCreator =
+    lesplanDetailTrainerLabel != null &&
+    lesplanOwnerTrim !== "" &&
+    viewerTrim !== "" &&
+    lesplanOwnerTrim !== viewerTrim;
+
+  const canManageCurrentLesplan =
+    !!lesplanDetail &&
+    viewerTrim !== "" &&
+    (!lesplanOwnerTrim || lesplanOwnerTrim === viewerTrim);
+
   const sheetContent = lesplanDetail ? (
     <>
       <View style={styles.sheetHeader}>
-        <Pressable onPress={closeLesplanDetail} hitSlop={12} testID="agenda-lesplan-back">
+        <Pressable onPress={lesplanHeaderBack} hitSlop={12} testID="agenda-lesplan-back">
           <Ionicons name="chevron-back" size={26} color={Colors.primary} />
         </Pressable>
         <Text style={[styles.modalTitle, styles.addTitleCenter]} numberOfLines={1}>
-          Lesplan
+          {lesplanEditMode ? "Lesplan bewerken" : "Lesplan"}
         </Text>
-        <Pressable onPress={onClose} hitSlop={12} testID="agenda-lesplan-close">
-          <Ionicons name="close" size={26} color={Colors.textSecondary} />
-        </Pressable>
+        <View style={styles.lesplanDetailHeaderActions}>
+          {canManageCurrentLesplan && !lesplanEditMode && (
+            <>
+              <Pressable
+                onPress={openLesplanEdit}
+                hitSlop={10}
+                testID="agenda-lesplan-edit"
+                accessibilityRole="button"
+                accessibilityLabel="Lesplan bewerken"
+              >
+                <Ionicons name="pencil" size={22} color={Colors.primary} />
+              </Pressable>
+              <Pressable
+                onPress={confirmDeleteLesplan}
+                hitSlop={10}
+                testID="agenda-lesplan-delete"
+                accessibilityRole="button"
+                accessibilityLabel="Lesplan verwijderen"
+              >
+                <Ionicons name="trash-outline" size={22} color={Colors.error} />
+              </Pressable>
+            </>
+          )}
+          <Pressable onPress={onClose} hitSlop={12} testID="agenda-lesplan-close">
+            <Ionicons name="close" size={26} color={Colors.textSecondary} />
+          </Pressable>
+        </View>
       </View>
-      <ScrollView
-        style={styles.lesplanDetailScroll}
-        contentContainerStyle={styles.lesplanDetailContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator
-      >
-        <View style={styles.metaRow}>
-          <Ionicons name="calendar-outline" size={16} color={Colors.textTertiary} />
-          <Text style={styles.metaText}>{lesplanDetail.datum}</Text>
-        </View>
-        <View style={styles.metaRow}>
-          <Ionicons
-            name={
-              lesplanDetail.lesplanVisibility === "private"
-                ? "lock-closed-outline"
-                : "globe-outline"
-            }
-            size={16}
-            color={Colors.textTertiary}
-          />
-          <Text style={styles.metaText}>
-            {lesplanDetail.lesplanVisibility === "private"
-              ? "Privé — alleen voor jou (met meerdere gebruikers)"
-              : "Publiek — zichtbaar voor alle trainers"}
+      {lesplanEditMode ? (
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.lesplanEditKeyboard}
+        >
+          <ScrollView
+            style={styles.lesplanDetailScroll}
+            contentContainerStyle={styles.lesplanDetailContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
+            <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Datum (DD-MM-JJJJ)</Text>
+            <TextInput
+              style={styles.textInput}
+              value={lesplanEditDatum}
+              onChangeText={(t) => {
+                setLesplanEditDatum(t);
+                setLesplanEditError("");
+              }}
+              placeholder="bijv. 27-04-2026"
+              placeholderTextColor={Colors.textTertiary}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+              testID="agenda-lesplan-edit-datum"
+            />
+            <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Plan</Text>
+            <TextInput
+              style={[styles.textInput, styles.textInputMultiline]}
+              value={lesplanEditNotitie}
+              onChangeText={(t) => {
+                setLesplanEditNotitie(t);
+                setLesplanEditError("");
+              }}
+              placeholder="Wat wil je op deze trainingsdag doen?"
+              placeholderTextColor={Colors.textTertiary}
+              multiline
+              testID="agenda-lesplan-edit-plan"
+            />
+            <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Zichtbaarheid</Text>
+            <View style={styles.gesprekTypeRow}>
+              <Pressable
+                style={[
+                  styles.gesprekTypeBtn,
+                  lesplanEditPublic && styles.gesprekTypeBtnActive,
+                ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setLesplanEditPublic(true);
+                  setLesplanEditError("");
+                }}
+                testID="agenda-lesplan-edit-publiek"
+              >
+                <Text
+                  style={[
+                    styles.gesprekTypeBtnText,
+                    lesplanEditPublic && styles.gesprekTypeBtnTextActive,
+                  ]}
+                >
+                  Publiek
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.gesprekTypeBtn,
+                  !lesplanEditPublic && styles.gesprekTypeBtnActive,
+                ]}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  setLesplanEditPublic(false);
+                  setLesplanEditError("");
+                }}
+                testID="agenda-lesplan-edit-prive"
+              >
+                <Text
+                  style={[
+                    styles.gesprekTypeBtnText,
+                    !lesplanEditPublic && styles.gesprekTypeBtnTextActive,
+                  ]}
+                >
+                  Privé
+                </Text>
+              </Pressable>
+            </View>
+            {!!lesplanEditError && <Text style={styles.errorText}>{lesplanEditError}</Text>}
+            <View style={styles.addActions}>
+              <Pressable style={styles.cancelBtn} onPress={cancelLesplanEdit} testID="agenda-lesplan-edit-cancel">
+                <Text style={styles.cancelBtnText}>Annuleren</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveBtn, lesplanSaving && { opacity: 0.6 }]}
+                onPress={() => void saveLesplanEdit()}
+                disabled={lesplanSaving}
+                testID="agenda-lesplan-edit-save"
+              >
+                {lesplanSaving ? (
+                  <ActivityIndicator size="small" color={Colors.white} />
+                ) : (
+                  <Text style={styles.saveBtnText}>Opslaan</Text>
+                )}
+              </Pressable>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      ) : (
+        <ScrollView
+          style={styles.lesplanDetailScroll}
+          contentContainerStyle={styles.lesplanDetailContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator
+        >
+          <View style={styles.metaRow}>
+            <Ionicons name="calendar-outline" size={16} color={Colors.textTertiary} />
+            <Text style={styles.metaText}>{lesplanDetail.datum}</Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Ionicons
+              name={
+                lesplanDetail.lesplanVisibility === "private"
+                  ? "lock-closed-outline"
+                  : "globe-outline"
+              }
+              size={16}
+              color={Colors.textTertiary}
+            />
+            <Text style={styles.metaText}>
+              {lesplanDetail.lesplanVisibility === "private" ? "Privé" : "Publiek"}
+            </Text>
+          </View>
+          {lesplanDetailShowOtherCreator && (
+            <View style={styles.metaRow}>
+              <Ionicons name="person-outline" size={16} color={Colors.textTertiary} />
+              <Text style={[styles.metaText, styles.lesplanByTrainerDetail]}>
+                {lesplanDetailTrainerLabel}
+              </Text>
+            </View>
+          )}
+          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Plan</Text>
+          <Text style={styles.lesplanDetailPlan}>
+            {lesplanDetail.notitie.trim() !== ""
+              ? lesplanDetail.notitie
+              : "Geen planbeschrijving."}
           </Text>
-        </View>
-        <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Plan</Text>
-        <Text style={styles.lesplanDetailPlan}>
-          {lesplanDetail.notitie.trim() !== ""
-            ? lesplanDetail.notitie
-            : "Geen planbeschrijving."}
-        </Text>
-      </ScrollView>
+        </ScrollView>
+      )}
     </>
   ) : phase === "list" ? (
       <>
@@ -1034,6 +1337,7 @@ export default function AgendaModal({
 
   const handleModalDismiss = () => {
     if (phase === "add") closeAdd();
+    else if (lesplanEditMode) cancelLesplanEdit();
     else if (lesplanDetail) closeLesplanDetail();
     else onClose();
   };
@@ -1099,6 +1403,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+  },
+  lesplanDetailHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  lesplanEditKeyboard: {
+    maxHeight: WINDOW_H * 0.78,
   },
   modalTitle: {
     flex: 1,
@@ -1221,6 +1533,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_400Regular",
     color: Colors.textSecondary,
+  },
+  lesplanByTrainerDetail: {
+    fontSize: 13,
+    color: Colors.textTertiary,
   },
   addKeyboard: { maxHeight: WINDOW_H * 0.78 },
   addScroll: { maxHeight: WINDOW_H * 0.62 },

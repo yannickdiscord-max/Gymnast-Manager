@@ -42,13 +42,20 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const headers = new Headers(init?.headers ?? undefined);
+  if (!headers.has("Content-Type") && !headers.has("content-type")) {
+    const body = init?.body;
+    if (typeof body === "string" && body.length > 0) {
+      headers.set("Content-Type", "application/json");
+    }
+  }
+  if (!headers.has("ngrok-skip-browser-warning")) {
+    headers.set("ngrok-skip-browser-warning", "true");
+  }
+
   const res = await fetch(buildUrl(path), {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      'ngrok-skip-browser-warning': 'true',
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
 
   if (!res.ok) {

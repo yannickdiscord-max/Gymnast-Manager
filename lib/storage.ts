@@ -6,6 +6,7 @@ export type {
   AgendaKalenderCategorie,
   AgendaWedstrijdItem,
   CustomAgendaEvent,
+  LesplanVisibility,
   Elementgroep,
   OuderGesprek,
   Sporter,
@@ -22,6 +23,7 @@ import type {
   AgendaKalenderCategorie,
   AgendaItem,
   CustomAgendaEvent,
+  LesplanVisibility,
   OuderGesprek,
   OuderGesprekType,
   Sporter,
@@ -43,6 +45,7 @@ export {
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_TRAINING_SESSION_DATUM,
+  MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   NIVEAU_MINIMUM,
   NIVEAUS,
@@ -293,10 +296,14 @@ export async function getWedstrijd(id: string): Promise<Wedstrijd | undefined> {
 
 export async function getUpcomingAgendaItems(options: {
   onlyFavorieten?: boolean;
+  viewerUserId?: string;
 } = {}): Promise<AgendaItem[]> {
-  const q =
-    options.onlyFavorieten === true ? "?onlyFavorieten=1" : "";
-  return apiFetch(`/api/agenda/upcoming${q}`);
+  const params = new URLSearchParams();
+  if (options.onlyFavorieten === true) params.set("onlyFavorieten", "1");
+  const v = options.viewerUserId?.trim();
+  if (v) params.set("viewerUserId", v);
+  const qs = params.toString();
+  return apiFetch(`/api/agenda/upcoming${qs ? `?${qs}` : ""}`);
 }
 
 export async function addCustomAgendaEvent(
@@ -305,10 +312,22 @@ export async function addCustomAgendaEvent(
   locatie: string,
   categorie: AgendaKalenderCategorie,
   notitie: string,
+  options?: {
+    lesplanVisibility?: LesplanVisibility;
+    ownerUserId?: string | null;
+  },
 ): Promise<CustomAgendaEvent> {
   return apiFetch("/api/agenda/custom-events", {
     method: "POST",
-    body: JSON.stringify({ titel, datum, locatie, categorie, notitie }),
+    body: JSON.stringify({
+      titel,
+      datum,
+      locatie,
+      categorie,
+      notitie,
+      lesplanVisibility: options?.lesplanVisibility,
+      ownerUserId: options?.ownerUserId,
+    }),
   });
 }
 

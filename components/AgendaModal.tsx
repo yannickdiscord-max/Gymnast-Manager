@@ -26,6 +26,7 @@ import {
   addCustomAgendaEvent,
   addOuderGesprek,
   DUPLICATE_WEDSTRIJD_ERROR,
+  MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
@@ -59,7 +60,7 @@ const ADD_TYPE_OPTIONS: { value: AddEventType; label: string }[] = [
   { value: "wedstrijd", label: "Wedstrijd" },
   { value: "ouder_gesprek", label: "Gesprek" },
   { value: "vrij", label: "Vrij / vakantie" },
-  { value: "feestdag", label: "Feestdag" },
+  { value: "lesplan", label: "Lesplan" },
   { value: "overig", label: "Anders" },
 ];
 
@@ -95,6 +96,10 @@ export default function AgendaModal({
   const [addError, setAddError] = useState("");
   const [savingAdd, setSavingAdd] = useState(false);
   const [agendaGesprekKind, setAgendaGesprekKind] = useState<OuderGesprekType>("normaal");
+  /** true = publiek voor alle trainers; false = privé (alleen eigen account zodra meerdere gebruikers actief zijn). */
+  const [addLesplanPublic, setAddLesplanPublic] = useState(true);
+  /** Inline lesplan detail in this sheet (no system Alert). */
+  const [lesplanDetail, setLesplanDetail] = useState<AgendaItemKalender | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +125,7 @@ export default function AgendaModal({
     if (!visible) {
       setPhase("list");
       setAddError("");
+      setLesplanDetail(null);
     }
   }, [visible]);
 
@@ -135,8 +141,14 @@ export default function AgendaModal({
     [sporters]
   );
 
+  const closeLesplanDetail = () => {
+    Haptics.selectionAsync();
+    setLesplanDetail(null);
+  };
+
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLesplanDetail(null);
     setAddType("vrij");
     setAddTitel("");
     setAddDatum("");
@@ -148,6 +160,7 @@ export default function AgendaModal({
     setAddWedstrijdSporterIds([]);
     setAddError("");
     setAgendaGesprekKind("normaal");
+    setAddLesplanPublic(true);
     setPhase("add");
   };
 
@@ -252,6 +265,46 @@ export default function AgendaModal({
           );
         } else {
           setAddError("Opslaan mislukt. Controleer de datum (DD-MM-JJJJ).");
+        }
+      } finally {
+        setSavingAdd(false);
+      }
+      return;
+    }
+
+    if (addType === "lesplan") {
+      if (!addDatum.trim()) {
+        setAddError("Vul een datum in.");
+        return;
+      }
+      if (!addNotitie.trim()) {
+        setAddError("Beschrijf het lesplan.");
+        return;
+      }
+      setSavingAdd(true);
+      try {
+        await addCustomAgendaEvent(
+          "Lesplan",
+          addDatum.trim(),
+          "",
+          "lesplan",
+          addNotitie.trim(),
+          {
+            lesplanVisibility: addLesplanPublic ? "public" : "private",
+          },
+        );
+        await load();
+        setPhase("list");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (e) {
+        if (e instanceof Error) {
+          if (e.message === MISSING_AGENDA_LESPLAN_PLAN) {
+            setAddError("Beschrijf het lesplan.");
+          } else if (e.message === INVALID_AGENDA_DATUM) {
+            setAddError("Ongeldige datum. Gebruik DD-MM-JJJJ.");
+          } else {
+            setAddError("Opslaan mislukt.");
+          }
         }
       } finally {
         setSavingAdd(false);
@@ -380,7 +433,14 @@ export default function AgendaModal({
     return (
       <Pressable
         style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        onPress={() => showKalenderDetail(item)}
+        onPress={() => {
+          if (item.categorie === "lesplan") {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setLesplanDetail(item);
+          } else {
+            showKalenderDetail(item);
+          }
+        }}
       >
         <View style={[styles.typeTag, styles.typeTagKalender]}>
           <Text style={styles.typeTagText}>{item.categorieLabel}</Text>
@@ -392,6 +452,12 @@ export default function AgendaModal({
           <Ionicons name="calendar-outline" size={14} color={Colors.textTertiary} />
           <Text style={styles.metaText}>{item.datum}</Text>
         </View>
+        {item.categorie === "lesplan" && item.lesplanVisibility === "private" && (
+          <View style={styles.metaRow}>
+            <Ionicons name="lock-closed-outline" size={14} color={Colors.textTertiary} />
+            <Text style={styles.metaText}>Privé lesplan</Text>
+          </View>
+        )}
         {item.locatie.trim() !== "" && (
           <View style={styles.metaRow}>
             <Ionicons name="location-outline" size={14} color={Colors.textTertiary} />
@@ -411,8 +477,54 @@ export default function AgendaModal({
 
   const listMinHeight = items.length >= 2 ? LIST_MIN_TWO_ROWS : undefined;
 
-  const sheetContent =
-    phase === "list" ? (
+  const sheetContent = lesplanDetail ? (
+    <>
+      <View style={styles.sheetHeader}>
+        <Pressable onPress={closeLesplanDetail} hitSlop={12} testID="agenda-lesplan-back">
+          <Ionicons name="chevron-back" size={26} color={Colors.primary} />
+        </Pressable>
+        <Text style={[styles.modalTitle, styles.addTitleCenter]} numberOfLines={1}>
+          Lesplan
+        </Text>
+        <Pressable onPress={onClose} hitSlop={12} testID="agenda-lesplan-close">
+          <Ionicons name="close" size={26} color={Colors.textSecondary} />
+        </Pressable>
+      </View>
+      <ScrollView
+        style={styles.lesplanDetailScroll}
+        contentContainerStyle={styles.lesplanDetailContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
+        <View style={styles.metaRow}>
+          <Ionicons name="calendar-outline" size={16} color={Colors.textTertiary} />
+          <Text style={styles.metaText}>{lesplanDetail.datum}</Text>
+        </View>
+        <View style={styles.metaRow}>
+          <Ionicons
+            name={
+              lesplanDetail.lesplanVisibility === "private"
+                ? "lock-closed-outline"
+                : "globe-outline"
+            }
+            size={16}
+            color={Colors.textTertiary}
+          />
+          <Text style={styles.metaText}>
+            {lesplanDetail.lesplanVisibility === "private"
+              ? "Privé — alleen voor jou (met meerdere gebruikers)"
+              : "Publiek — zichtbaar voor alle trainers"}
+          </Text>
+        </View>
+        <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Plan</Text>
+        <Text style={styles.lesplanDetailPlan}>
+          {lesplanDetail.notitie.trim() !== ""
+            ? lesplanDetail.notitie
+            : "Geen planbeschrijving."}
+        </Text>
+      </ScrollView>
+    </>
+  ) : phase === "list" ? (
       <>
         <View style={styles.sheetHeader}>
           <Text style={styles.modalTitle}>Agenda</Text>
@@ -442,7 +554,7 @@ export default function AgendaModal({
             <Text style={styles.emptyTitle}>Geen aankomende gebeurtenissen</Text>
             <Text style={styles.emptySub}>
               Voeg wedstrijden toe via een sporter, of gebruik het plus-icoon voor
-              vrije dagen en feestdagen.
+              vrije dagen, lesplannen en andere afspraken.
             </Text>
             <Pressable style={styles.emptyAddBtn} onPress={openAdd}>
               <Ionicons name="add" size={20} color={Colors.white} />
@@ -737,78 +849,165 @@ export default function AgendaModal({
             </>
           )}
 
-          {addType !== "ouder_gesprek" && (
+          {addType === "lesplan" ? (
             <>
-              <Text style={[styles.fieldLabel, addType === "wedstrijd" ? undefined : styles.fieldLabelSpaced]}>
-                Titel
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>
+                Datum (DD-MM-JJJJ)
               </Text>
-              {addType === "wedstrijd" ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={addTitel}
-                  onChangeText={(t) => {
-                    setAddTitel(t);
+              <TextInput
+                style={styles.textInput}
+                value={addDatum}
+                onChangeText={(t) => {
+                  setAddDatum(t);
+                  setAddError("");
+                }}
+                placeholder="bijv. 27-04-2026"
+                placeholderTextColor={Colors.textTertiary}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+                testID="agenda-add-datum"
+              />
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Plan</Text>
+              <TextInput
+                style={[styles.textInput, styles.textInputMultiline]}
+                value={addNotitie}
+                onChangeText={(t) => {
+                  setAddNotitie(t);
+                  setAddError("");
+                }}
+                placeholder="Wat wil je op deze trainingsdag doen?"
+                placeholderTextColor={Colors.textTertiary}
+                multiline
+                testID="agenda-add-lesplan-plan"
+              />
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Zichtbaarheid</Text>
+              <Text style={styles.hintMutedSmall}>
+                Publiek: alle trainers zien dat er een lesplan op deze datum staat. Privé: later
+                alleen zichtbaar voor jou zodra meerdere gebruikers actief zijn.
+              </Text>
+              <View style={styles.gesprekTypeRow}>
+                <Pressable
+                  style={[
+                    styles.gesprekTypeBtn,
+                    addLesplanPublic && styles.gesprekTypeBtnActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setAddLesplanPublic(true);
                     setAddError("");
                   }}
-                  placeholder="Wedstrijdnaam"
-                  placeholderTextColor={Colors.textTertiary}
-                  testID="agenda-add-titel"
-                />
-              ) : (
-                <TextInput
-                  style={styles.textInput}
-                  value={addTitel}
-                  onChangeText={(t) => {
-                    setAddTitel(t);
+                  testID="agenda-lesplan-publiek"
+                >
+                  <Text
+                    style={[
+                      styles.gesprekTypeBtnText,
+                      addLesplanPublic && styles.gesprekTypeBtnTextActive,
+                    ]}
+                  >
+                    Publiek
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.gesprekTypeBtn,
+                    !addLesplanPublic && styles.gesprekTypeBtnActive,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    setAddLesplanPublic(false);
                     setAddError("");
                   }}
-                  placeholder="bijv. Meivakantie"
-                  placeholderTextColor={Colors.textTertiary}
-                  testID="agenda-add-titel"
-                />
+                  testID="agenda-lesplan-prive"
+                >
+                  <Text
+                    style={[
+                      styles.gesprekTypeBtnText,
+                      !addLesplanPublic && styles.gesprekTypeBtnTextActive,
+                    ]}
+                  >
+                    Privé
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <>
+              {addType !== "ouder_gesprek" && (
+                <>
+                  <Text style={[styles.fieldLabel, addType === "wedstrijd" ? undefined : styles.fieldLabelSpaced]}>
+                    Titel
+                  </Text>
+                  {addType === "wedstrijd" ? (
+                    <TextInput
+                      style={styles.textInput}
+                      value={addTitel}
+                      onChangeText={(t) => {
+                        setAddTitel(t);
+                        setAddError("");
+                      }}
+                      placeholder="Wedstrijdnaam"
+                      placeholderTextColor={Colors.textTertiary}
+                      testID="agenda-add-titel"
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.textInput}
+                      value={addTitel}
+                      onChangeText={(t) => {
+                        setAddTitel(t);
+                        setAddError("");
+                      }}
+                      placeholder="bijv. Meivakantie"
+                      placeholderTextColor={Colors.textTertiary}
+                      testID="agenda-add-titel"
+                    />
+                  )}
+                </>
               )}
+
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Datum (DD-MM-JJJJ)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={addDatum}
+                onChangeText={(t) => {
+                  setAddDatum(t);
+                  setAddError("");
+                }}
+                placeholder="bijv. 27-04-2026"
+                placeholderTextColor={Colors.textTertiary}
+                keyboardType="numbers-and-punctuation"
+                maxLength={10}
+                testID="agenda-add-datum"
+              />
+
+              {(addType === "wedstrijd" ||
+                addType === "ouder_gesprek" ||
+                addType === "overig") && (
+                <>
+                  <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Locatie (optioneel)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={addLocatie}
+                    onChangeText={setAddLocatie}
+                    placeholder="Optioneel"
+                    placeholderTextColor={Colors.textTertiary}
+                    testID="agenda-add-locatie"
+                  />
+                </>
+              )}
+
+              <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Notitie (optioneel)</Text>
+              <TextInput
+                style={[styles.textInput, styles.textInputMultiline]}
+                value={addNotitie}
+                onChangeText={setAddNotitie}
+                placeholder="Extra info, bv. geen training"
+                placeholderTextColor={Colors.textTertiary}
+                multiline
+                testID="agenda-add-notitie"
+              />
             </>
           )}
-
-          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Datum (DD-MM-JJJJ)</Text>
-          <TextInput
-            style={styles.textInput}
-            value={addDatum}
-            onChangeText={(t) => {
-              setAddDatum(t);
-              setAddError("");
-            }}
-            placeholder="bijv. 27-04-2026"
-            placeholderTextColor={Colors.textTertiary}
-            keyboardType="numbers-and-punctuation"
-            maxLength={10}
-            testID="agenda-add-datum"
-          />
-
-          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Locatie (optioneel)</Text>
-          <TextInput
-            style={styles.textInput}
-            value={addLocatie}
-            onChangeText={setAddLocatie}
-            placeholder={
-              addType === "vrij" || addType === "feestdag" || addType === "overig"
-                ? "Laat leeg bij feestdagen zonder locatie"
-                : "Optioneel"
-            }
-            placeholderTextColor={Colors.textTertiary}
-            testID="agenda-add-locatie"
-          />
-
-          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Notitie (optioneel)</Text>
-          <TextInput
-            style={[styles.textInput, styles.textInputMultiline]}
-            value={addNotitie}
-            onChangeText={setAddNotitie}
-            placeholder="Extra info, bv. geen training"
-            placeholderTextColor={Colors.textTertiary}
-            multiline
-            testID="agenda-add-notitie"
-          />
 
           {!!addError && <Text style={styles.errorText}>{addError}</Text>}
 
@@ -833,17 +1032,23 @@ export default function AgendaModal({
       </KeyboardAvoidingView>
     );
 
+  const handleModalDismiss = () => {
+    if (phase === "add") closeAdd();
+    else if (lesplanDetail) closeLesplanDetail();
+    else onClose();
+  };
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
-      onRequestClose={phase === "add" ? closeAdd : onClose}
+      onRequestClose={handleModalDismiss}
     >
       <View style={styles.modalOverlay}>
         <Pressable
           style={styles.modalBackdrop}
-          onPress={phase === "add" ? closeAdd : onClose}
+          onPress={handleModalDismiss}
         />
         <View
           style={[
@@ -947,6 +1152,19 @@ const styles = StyleSheet.create({
     maxHeight: LIST_MAX_H,
   },
   listContent: { paddingBottom: 8 },
+  lesplanDetailScroll: {
+    maxHeight: Math.min(WINDOW_H * 0.62, 520),
+  },
+  lesplanDetailContent: {
+    paddingBottom: 12,
+    gap: 0,
+  },
+  lesplanDetailPlan: {
+    fontSize: 16,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+    lineHeight: 24,
+  },
   row: {
     backgroundColor: Colors.surfaceSecondary,
     borderRadius: 12,

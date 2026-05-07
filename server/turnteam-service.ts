@@ -20,7 +20,9 @@ import {
   INVALID_TRAINING_SESSION_DATUM,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
+  MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
+  type LesplanVisibility,
   ONDERDELEN_PER_TOESTEL,
   TOESTELLEN,
   sortOnderdelen,
@@ -43,6 +45,29 @@ import {
 } from "../shared/wedstrijden-normalize";
 
 const META_WEDSTRIJDEN_MIGRATED = "wedstrijden_migrated";
+
+function normalizeAgendaKalenderCategorieFromDb(raw: string): AgendaKalenderCategorie {
+  if (raw === "vrij" || raw === "overig" || raw === "lesplan") return raw;
+  if (raw === "feestdag" || raw === "nationale_feestdag") return "overig";
+  return "overig";
+}
+
+/**
+ * Private lesplans are hidden from other users once `viewerUserId` and `ownerUserId` are both set.
+ * If the client sends no `viewerUserId` (current single-tenant app), all lesplans are shown.
+ */
+function shouldIncludeKalenderEventForViewer(
+  c: CustomAgendaEvent,
+  viewerUserId: string | undefined,
+): boolean {
+  if (c.categorie !== "lesplan") return true;
+  const vis = c.lesplanVisibility === "private" ? "private" : "public";
+  if (vis !== "private") return true;
+  const owner = c.ownerUserId ?? null;
+  if (owner === null) return true;
+  if (viewerUserId === undefined || viewerUserId === "") return true;
+  return viewerUserId === owner;
+}
 const CATALOG_ID = "default";
 
 async function getMeta(key: string): Promise<string | undefined> {
@@ -728,14 +753,19 @@ async function getCustomAgendaEvents(): Promise<CustomAgendaEvent[]> {
   const rows = await db.select().from(schema.customAgendaEvents);
   const out: CustomAgendaEvent[] = [];
   for (const e of rows) {
-    let categorie = e.categorie as AgendaKalenderCategorie | "nationale_feestdag";
-    if (categorie === "nationale_feestdag") {
-      categorie = "feestdag";
+    const categorie = normalizeAgendaKalenderCategorieFromDb(e.categorie);
+    if (e.categorie !== categorie) {
       await db
         .update(schema.customAgendaEvents)
-        .set({ categorie: "feestdag" })
+        .set({ categorie })
         .where(eq(schema.customAgendaEvents.id, e.id));
     }
+    const lesplanVis: LesplanVisibility | "" =
+      categorie === "lesplan"
+        ? e.lesplanVisibility === "private"
+          ? "private"
+          : "public"
+        : "";
     out.push({
       id: e.id,
       titel: e.titel,
@@ -743,6 +773,8 @@ async function getCustomAgendaEvents(): Promise<CustomAgendaEvent[]> {
       locatie: e.locatie,
       categorie,
       notitie: e.notitie,
+      lesplanVisibility: lesplanVis,
+      ownerUserId: categorie === "lesplan" ? e.ownerUserId ?? null : null,
     });
   }
   return out;
@@ -750,6 +782,8 @@ async function getCustomAgendaEvents(): Promise<CustomAgendaEvent[]> {
 
 export async function getUpcomingAgendaItems(options: {
   onlyFavorieten?: boolean;
+  /** When set (after auth), filters private lesplans to this user. */
+  viewerUserId?: string;
 } = {}): Promise<AgendaItem[]> {
   const all = await getNormalizedWedstrijden();
   const sporters = await listSporters();
@@ -801,7 +835,9 @@ export async function getUpcomingAgendaItems(options: {
   }
 
   const customAll = await getCustomAgendaEvents();
+  const viewer = options.viewerUserId?.trim();
   for (const c of customAll) {
+    if (!shouldIncludeKalenderEventForViewer(c, viewer)) continue;
     const ts = wedstrijdDatumToTimestamp(c.datum);
     if (ts === null || ts < todayStart) continue;
     items.push({
@@ -813,6 +849,8 @@ export async function getUpcomingAgendaItems(options: {
       categorie: c.categorie,
       notitie: c.notitie,
       categorieLabel: AGENDA_CATEGORIE_LABELS[c.categorie],
+      lesplanVisibility: c.lesplanVisibility,
+      ownerUserId: c.ownerUserId,
     });
   }
 
@@ -849,23 +887,39 @@ export async function addCustomAgendaEvent(
   locatie: string,
   categorie: AgendaKalenderCategorie,
   notitie: string,
+  options?: {
+    lesplanVisibility?: LesplanVisibility;
+    ownerUserId?: string | null;
+  },
 ): Promise<CustomAgendaEvent> {
-  const trimmedTitel = titel.trim();
-  if (!trimmedTitel) {
-    throw new Error(MISSING_AGENDA_TITEL);
-  }
+  const cat = normalizeAgendaKalenderCategorieFromDb(String(categorie));
+  const trimmedNotitie = notitie.trim();
   const normalizedDatum = normalizeEuropeanDate(datum);
   if (wedstrijdDatumToTimestamp(normalizedDatum) === null) {
     throw new Error(INVALID_AGENDA_DATUM);
   }
+  if (cat === "lesplan") {
+    if (!trimmedNotitie) {
+      throw new Error(MISSING_AGENDA_LESPLAN_PLAN);
+    }
+  } else if (!titel.trim()) {
+    throw new Error(MISSING_AGENDA_TITEL);
+  }
+  const trimmedTitel =
+    cat === "lesplan" ? titel.trim() || "Lesplan" : titel.trim();
   const id = randomUUID();
+  const lesplanVis: LesplanVisibility =
+    cat === "lesplan" ? (options?.lesplanVisibility ?? "public") : "public";
+  const ownerId = cat === "lesplan" ? (options?.ownerUserId ?? null) : null;
   const ev: CustomAgendaEvent = {
     id,
     titel: trimmedTitel,
     datum: normalizedDatum,
     locatie: locatie.trim(),
-    categorie,
-    notitie: notitie.trim(),
+    categorie: cat,
+    notitie: trimmedNotitie,
+    lesplanVisibility: cat === "lesplan" ? lesplanVis : "",
+    ownerUserId: cat === "lesplan" ? ownerId : null,
   };
   await db.insert(schema.customAgendaEvents).values({
     id,
@@ -874,6 +928,8 @@ export async function addCustomAgendaEvent(
     locatie: ev.locatie,
     categorie: ev.categorie,
     notitie: ev.notitie,
+    lesplanVisibility: cat === "lesplan" ? lesplanVis : "",
+    ownerUserId: cat === "lesplan" ? ownerId : null,
   });
   return ev;
 }
@@ -1164,13 +1220,23 @@ export async function importLegacyPayload(body: {
 
     const custom = body.customAgendaEvents ?? [];
     for (const c of custom) {
+      const categorie = normalizeAgendaKalenderCategorieFromDb(String(c.categorie));
+      const lpVis =
+        categorie === "lesplan"
+          ? c.lesplanVisibility === "private"
+            ? "private"
+            : "public"
+          : "";
       await tx.insert(schema.customAgendaEvents).values({
         id: c.id,
         titel: c.titel,
         datum: c.datum,
         locatie: c.locatie,
-        categorie: c.categorie,
+        categorie,
         notitie: c.notitie,
+        lesplanVisibility: lpVis,
+        ownerUserId:
+          categorie === "lesplan" ? (c.ownerUserId ?? null) : null,
       });
     }
 

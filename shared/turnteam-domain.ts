@@ -193,7 +193,9 @@ export interface Wedstrijd {
   targetNiveaus?: string[];
 }
 
-export type AgendaKalenderCategorie = "vrij" | "feestdag" | "overig";
+export type AgendaKalenderCategorie = "vrij" | "overig" | "lesplan";
+
+export type LesplanVisibility = "private" | "public";
 
 export interface CustomAgendaEvent {
   id: string;
@@ -202,13 +204,17 @@ export interface CustomAgendaEvent {
   locatie: string;
   categorie: AgendaKalenderCategorie;
   notitie: string;
+  /** Only for `lesplan`; omitted or empty when not applicable. */
+  lesplanVisibility?: LesplanVisibility | "";
+  /** Creator user id when multi-user auth exists; private lesplans use this for visibility. */
+  ownerUserId?: string | null;
 }
 
 export const AGENDA_CATEGORIE_LABELS: Record<AgendaKalenderCategorie, string> =
   {
     vrij: "Vrije dag / vakantie",
-    feestdag: "Feestdag",
     overig: "Anders",
+    lesplan: "Lesplan",
   };
 
 export type AgendaWedstrijdItem = Wedstrijd & { sporterNaam: string };
@@ -223,6 +229,8 @@ export type AgendaItemKalender = {
   categorie: AgendaKalenderCategorie;
   notitie: string;
   categorieLabel: string;
+  lesplanVisibility?: LesplanVisibility | "";
+  ownerUserId?: string | null;
 };
 
 export type AgendaItemOuderGesprek = {
@@ -248,6 +256,7 @@ export const INVALID_TRAINING_SESSION_DATUM = "INVALID_TRAINING_SESSION_DATUM";
 export const DUPLICATE_WEDSTRIJD_ERROR = "DUPLICATE_WEDSTRIJD_ERROR";
 
 export const MISSING_AGENDA_TITEL = "MISSING_AGENDA_TITEL";
+export const MISSING_AGENDA_LESPLAN_PLAN = "MISSING_AGENDA_LESPLAN_PLAN";
 export const INVALID_AGENDA_DATUM = "INVALID_AGENDA_DATUM";
 
 export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";

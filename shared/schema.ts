@@ -85,6 +85,12 @@ export const customAgendaEvents = pgTable("custom_agenda_events", {
   locatie: text("locatie").notNull(),
   categorie: varchar("categorie", { length: 32 }).notNull(),
   notitie: text("notitie").notNull(),
+  /** Empty string except for categorie `lesplan`: `private` | `public`. */
+  lesplanVisibility: varchar("lesplan_visibility", { length: 16 })
+    .notNull()
+    .default(""),
+  /** When multi-user auth exists, private lesplans are visible only to this user id. */
+  ownerUserId: varchar("owner_user_id", { length: 64 }),
 });
 
 export const appMeta = pgTable("app_meta", {

@@ -1,13 +1,18 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { Router } from "express";
 import * as svc from "./turnteam-service";
-import type { AgendaKalenderCategorie, OuderGesprekType, Toestel } from "../shared/turnteam-domain";
+import type {
+  AgendaKalenderCategorie,
+  OuderGesprekType,
+  Toestel,
+} from "../shared/turnteam-domain";
 import {
   DUPLICATE_TRAINING_SESSION_ERROR,
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_TRAINING_SESSION_DATUM,
+  MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
 } from "../shared/turnteam-domain";
 
@@ -502,7 +507,18 @@ export function registerTurnteamRoutes(app: Express): void {
       const only =
         String(req.query.onlyFavorieten ?? "") === "1" ||
         String(req.query.onlyFavorieten ?? "") === "true";
-      res.json(await svc.getUpcomingAgendaItems({ onlyFavorieten: only }));
+      const viewerRaw = req.query.viewerUserId;
+      const viewerUserId =
+        typeof viewerRaw === "string" ? viewerRaw.trim() : undefined;
+      res.json(
+        await svc.getUpcomingAgendaItems({
+          onlyFavorieten: only,
+          viewerUserId:
+            viewerUserId !== undefined && viewerUserId !== ""
+              ? viewerUserId
+              : undefined,
+        }),
+      );
     }),
   );
 
@@ -510,6 +526,14 @@ export function registerTurnteamRoutes(app: Express): void {
     "/agenda/custom-events",
     asyncHandler(async (req, res) => {
       try {
+        const lv = req.body?.lesplanVisibility;
+        const lesplanVisibility =
+          lv === "private" || lv === "public" ? lv : undefined;
+        const ou = req.body?.ownerUserId;
+        const ownerUserId =
+          ou === null || ou === undefined
+            ? undefined
+            : String(ou).trim() || null;
         res.json(
           await svc.addCustomAgendaEvent(
             String(req.body?.titel ?? ""),
@@ -517,11 +541,20 @@ export function registerTurnteamRoutes(app: Express): void {
             String(req.body?.locatie ?? ""),
             req.body?.categorie as AgendaKalenderCategorie,
             String(req.body?.notitie ?? ""),
+            {
+              lesplanVisibility,
+              ownerUserId:
+                ownerUserId === undefined ? undefined : ownerUserId,
+            },
           ),
         );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg === MISSING_AGENDA_TITEL || msg === INVALID_AGENDA_DATUM) {
+        if (
+          msg === MISSING_AGENDA_TITEL ||
+          msg === MISSING_AGENDA_LESPLAN_PLAN ||
+          msg === INVALID_AGENDA_DATUM
+        ) {
           res.status(400).json({ message: msg });
           return;
         }

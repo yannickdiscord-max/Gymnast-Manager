@@ -10,6 +10,7 @@ export type {
   Elementgroep,
   OuderGesprek,
   Sporter,
+  SporterAttendanceArchive,
   SporterBlessures,
   Toestel,
   ToestelScore,
@@ -27,6 +28,7 @@ import type {
   OuderGesprek,
   OuderGesprekType,
   Sporter,
+  SporterAttendanceArchive,
   SporterBlessures,
   Toestel,
   ToestelScore,
@@ -45,6 +47,8 @@ export {
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_TRAINING_SESSION_DATUM,
+  NO_TRAINING_SESSIONS_TO_ARCHIVE,
+  TRAINING_SESSION_NOT_FOUND,
   LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
@@ -222,6 +226,12 @@ export async function addTrainingSession(
   });
 }
 
+export async function deleteTrainingSession(sessionId: string): Promise<void> {
+  await apiFetch(`/api/training-sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getSporterAttendanceSummary(sporterId: string): Promise<{
   totalSessions: number;
   attendedSessions: number;
@@ -231,6 +241,54 @@ export async function getSporterAttendanceSummary(sporterId: string): Promise<{
   return apiFetch(
     `/api/training-sessions/attendance/${encodeURIComponent(sporterId)}`,
   );
+}
+
+export async function setSporterAttendanceForSession(
+  sessionId: string,
+  sporterId: string,
+  attended: boolean,
+): Promise<TrainingSession> {
+  return apiFetch(
+    `/api/training-sessions/${encodeURIComponent(sessionId)}/attendance/${encodeURIComponent(sporterId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ attended }),
+    },
+  );
+}
+
+export async function getSporterAttendanceArchives(
+  sporterId: string,
+): Promise<SporterAttendanceArchive[]> {
+  return apiFetch(
+    `/api/training-sessions/attendance/${encodeURIComponent(sporterId)}/archives`,
+  );
+}
+
+export async function deleteAttendanceArchiveBatch(
+  seasonBatchId: string,
+): Promise<void> {
+  await apiFetch(
+    `/api/training-sessions/archive-batches/${encodeURIComponent(
+      seasonBatchId,
+    )}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function archiveAttendanceSeason(seasonLabel?: string): Promise<{
+  seasonBatchId: string;
+  seasonLabel: string;
+  archivedAt: string;
+  sporterCount: number;
+  trainingSessionCount: number;
+}> {
+  return apiFetch("/api/training-sessions/archive-season", {
+    method: "POST",
+    body: JSON.stringify(
+      seasonLabel?.trim() ? { seasonLabel: seasonLabel.trim() } : {},
+    ),
+  });
 }
 
 export async function getOuderGesprekkenForSporter(

@@ -1,4 +1,3 @@
-import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -8,7 +7,6 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/components/AuthProvider";
 import TrainerLoginScreen from "@/components/TrainerLoginScreen";
-import { queryClient } from "@/lib/query-client";
 import { maybeMigrateLocalDataToServer } from "@/lib/migrate-legacy-to-server";
 import Colors from "@/constants/colors";
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from "@expo-google-fonts/inter";
@@ -64,13 +62,11 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={styles.root}>
-            <KeyboardProvider>
-              <RootLayoutNav />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
+        <GestureHandlerRootView style={styles.root}>
+          <KeyboardProvider>
+            <RootLayoutNav />
+          </KeyboardProvider>
+        </GestureHandlerRootView>
       </AuthProvider>
     </ErrorBoundary>
   );

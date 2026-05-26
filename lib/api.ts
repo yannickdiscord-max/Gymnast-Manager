@@ -14,22 +14,31 @@ export class ApiError extends Error {
   }
 }
 
+let cachedApiBaseUrl: string | null = null;
+
 export function getApiBaseUrl(): string {
+  if (cachedApiBaseUrl !== null) return cachedApiBaseUrl;
+
   const fromEnv = process.env.EXPO_PUBLIC_API_URL;
   if (fromEnv) {
-    return stripTrailingSlash(fromEnv);
+    cachedApiBaseUrl = stripTrailingSlash(fromEnv);
+    return cachedApiBaseUrl;
   }
   const fromExtra = Constants.expoConfig?.extra?.apiUrl as string | undefined;
   if (fromExtra) {
-    return stripTrailingSlash(fromExtra);
+    cachedApiBaseUrl = stripTrailingSlash(fromExtra);
+    return cachedApiBaseUrl;
   }
   if (typeof window !== "undefined" && window.location?.origin) {
-    return stripTrailingSlash(window.location.origin);
+    cachedApiBaseUrl = stripTrailingSlash(window.location.origin);
+    return cachedApiBaseUrl;
   }
   if (Platform.OS === "android") {
-    return "http://10.0.2.2:5000";
+    cachedApiBaseUrl = "http://10.0.2.2:5000";
+    return cachedApiBaseUrl;
   }
-  return "http://127.0.0.1:5000";
+  cachedApiBaseUrl = "http://127.0.0.1:5000";
+  return cachedApiBaseUrl;
 }
 
 function buildUrl(path: string): string {

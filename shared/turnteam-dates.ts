@@ -55,6 +55,22 @@ export function trainingSessionDatumToTime(datum: string): number {
   return new Date(yyyy, mm - 1, dd).getTime();
 }
 
+export function formatTodayEuropean(): string {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+/** Turnseizoen juli–juni, bijv. "2025-2026". */
+export function defaultTurnSeasonLabel(reference = new Date()): string {
+  const y = reference.getFullYear();
+  const m = reference.getMonth() + 1;
+  const start = m >= 7 ? y : y - 1;
+  return `${start}-${start + 1}`;
+}
+
 export function normalizeOuderGesprekDatum(value: string): string {
   const match = value.trim().match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if (!match) return value.trim();

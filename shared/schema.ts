@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -52,6 +53,20 @@ export const trainingSessions = pgTable("training_sessions", {
   id: varchar("id", { length: 64 }).primaryKey(),
   datum: varchar("datum", { length: 16 }).notNull().unique(),
   attendeeSporterIds: jsonb("attendee_sporter_ids").notNull(),
+});
+
+/** Samenvatting aanwezigheid per sporter na afsluiten van een turnseizoen. */
+export const sporterAttendanceArchives = pgTable("sporter_attendance_archives", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  sporterId: varchar("sporter_id", { length: 64 })
+    .notNull()
+    .references(() => sporters.id, { onDelete: "cascade" }),
+  seasonBatchId: varchar("season_batch_id", { length: 64 }).notNull(),
+  seasonLabel: text("season_label").notNull(),
+  archivedAt: varchar("archived_at", { length: 16 }).notNull(),
+  attendedSessions: integer("attended_sessions").notNull(),
+  totalSessions: integer("total_sessions").notNull(),
+  percentage: integer("percentage").notNull(),
 });
 
 export const ouderGesprekken = pgTable("ouder_gesprekken", {

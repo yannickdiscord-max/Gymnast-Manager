@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -30,24 +30,27 @@ export default function HomeScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
 
+  const loadSporters = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getSporters();
+      setSporters(data);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      loadSporters();
-    }, [])
+      void loadSporters();
+    }, [loadSporters]),
   );
 
-  const loadSporters = async () => {
-    setLoading(true);
-    const data = await getSporters();
-    setSporters(data);
-    setLoading(false);
-  };
-
-  const handleToggleFavoriet = async (id: string) => {
+  const handleToggleFavoriet = useCallback(async (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const updated = await toggleFavoriet(id);
     setSporters(updated);
-  };
+  }, []);
 
   const openAgenda = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -59,18 +62,18 @@ export default function HomeScreen() {
     await logout();
   };
 
-  const sortSporters = (list: Sporter[]) =>
-    [...list].sort((a, b) => {
+  const filtered = useMemo(() => {
+    const list =
+      filter === "favorieten" ? sporters.filter((s) => s.favoriet) : sporters;
+    return [...list].sort((a, b) => {
       const niveauDiff = NIVEAUS.indexOf(a.niveau) - NIVEAUS.indexOf(b.niveau);
       if (niveauDiff !== 0) return niveauDiff;
       return a.naam.localeCompare(b.naam);
     });
+  }, [sporters, filter]);
 
-  const filtered = sortSporters(
-    filter === "favorieten" ? sporters.filter((s) => s.favoriet) : sporters
-  );
-
-  const renderSporter = ({ item }: { item: Sporter }) => (
+  const renderSporter = useCallback(
+    ({ item }: { item: Sporter }) => (
     <Pressable
       style={({ pressed }) => [
         styles.sporterItem,
@@ -100,26 +103,33 @@ export default function HomeScreen() {
         />
       </Pressable>
     </Pressable>
+    ),
+    [handleToggleFavoriet],
   );
 
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons
-        name="people-outline"
-        size={48}
-        color={Colors.textTertiary}
-      />
-      <Text style={styles.emptyTitle}>
-        {filter === "favorieten"
-          ? "Geen favorieten"
-          : "Geen sporters"}
-      </Text>
-      <Text style={styles.emptyText}>
-        {filter === "favorieten"
-          ? "Markeer sporters als favoriet met de ster"
-          : "Voeg je eerste sporter toe"}
-      </Text>
-    </View>
+  const keyExtractor = useCallback((item: Sporter) => item.id, []);
+
+  const renderEmpty = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Ionicons
+          name="people-outline"
+          size={48}
+          color={Colors.textTertiary}
+        />
+        <Text style={styles.emptyTitle}>
+          {filter === "favorieten"
+            ? "Geen favorieten"
+            : "Geen sporters"}
+        </Text>
+        <Text style={styles.emptyText}>
+          {filter === "favorieten"
+            ? "Markeer sporters als favoriet met de ster"
+            : "Voeg je eerste sporter toe"}
+        </Text>
+      </View>
+    ),
+    [filter],
   );
 
   return (
@@ -230,9 +240,10 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           renderItem={renderSporter}
           ListEmptyComponent={renderEmpty}
+          removeClippedSubviews={Platform.OS === "android"}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: 100 + insets.bottom + webBottomInset },

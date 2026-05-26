@@ -8,6 +8,8 @@ import type {
 } from "../shared/turnteam-domain";
 import {
   DUPLICATE_TRAINING_SESSION_ERROR,
+  TRAINING_SESSION_NOT_FOUND,
+  NO_TRAINING_SESSIONS_TO_ARCHIVE,
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
@@ -270,12 +272,95 @@ export function registerTurnteamRoutes(app: Express): void {
     }),
   );
 
+  api.delete(
+    "/training-sessions/:sessionId",
+    asyncHandler(async (req, res) => {
+      const ok = await svc.deleteTrainingSessionById(pid(req, "sessionId"));
+      if (!ok) {
+        res.status(404).json({ message: "Not found" });
+        return;
+      }
+      res.status(204).end();
+    }),
+  );
+
   api.get(
     "/training-sessions/attendance/:sporterId",
     asyncHandler(async (req, res) => {
       res.json(
         await svc.getSporterAttendanceSummary(pid(req, "sporterId")),
       );
+    }),
+  );
+
+  api.post(
+    "/training-sessions/archive-season",
+    asyncHandler(async (req, res) => {
+      try {
+        const seasonLabel =
+          typeof req.body?.seasonLabel === "string"
+            ? req.body.seasonLabel
+            : undefined;
+        res.json(await svc.archiveAttendanceSeason(seasonLabel));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === NO_TRAINING_SESSIONS_TO_ARCHIVE) {
+          res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
+    }),
+  );
+
+  api.get(
+    "/training-sessions/archive-batches",
+    asyncHandler(async (_req, res) => {
+      res.json(await svc.getAttendanceArchiveBatches());
+    }),
+  );
+
+  api.delete(
+    "/training-sessions/archive-batches/:seasonBatchId",
+    asyncHandler(async (req, res) => {
+      await svc.deleteAttendanceArchiveBatch(pid(req, "seasonBatchId"));
+      res.status(204).end();
+    }),
+  );
+
+  api.get(
+    "/training-sessions/attendance/:sporterId/archives",
+    asyncHandler(async (req, res) => {
+      res.json(
+        await svc.getSporterAttendanceArchives(pid(req, "sporterId")),
+      );
+    }),
+  );
+
+  api.patch(
+    "/training-sessions/:sessionId/attendance/:sporterId",
+    asyncHandler(async (req, res) => {
+      try {
+        const attended = req.body?.attended;
+        if (typeof attended !== "boolean") {
+          badRequest(res, "attended boolean required");
+          return;
+        }
+        res.json(
+          await svc.setSporterAttendanceForSession(
+            pid(req, "sessionId"),
+            pid(req, "sporterId"),
+            attended,
+          ),
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === TRAINING_SESSION_NOT_FOUND) {
+          res.status(404).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
     }),
   );
 

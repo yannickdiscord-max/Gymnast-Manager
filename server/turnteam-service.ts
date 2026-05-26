@@ -10,6 +10,7 @@ import {
   type OuderGesprek,
   type OuderGesprekType,
   type Sporter,
+  type SporterAttendanceArchive,
   type SporterBlessures,
   type ToestelScore,
   type TrainingSession,
@@ -18,6 +19,8 @@ import {
   DUPLICATE_TRAINING_SESSION_ERROR,
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_TRAINING_SESSION_DATUM,
+  TRAINING_SESSION_NOT_FOUND,
+  NO_TRAINING_SESSIONS_TO_ARCHIVE,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   MISSING_AGENDA_LESPLAN_PLAN,
@@ -36,6 +39,8 @@ import {
   normalizeEuropeanDate,
   normalizeOuderGesprekDatum,
   normalizeTrainingSessionDatum,
+  defaultTurnSeasonLabel,
+  formatTodayEuropean,
   trainingSessionDatumToTime,
   wedstrijdDatumToTimestamp,
 } from "../shared/turnteam-dates";
@@ -512,7 +517,84 @@ export async function addTrainingSession(
   return session;
 }
 
+export async function getTrainingSessionById(
+  sessionId: string,
+): Promise<TrainingSession | undefined> {
+  const rows = await db
+    .select()
+    .from(schema.trainingSessions)
+    .where(eq(schema.trainingSessions.id, sessionId))
+    .limit(1);
+  if (!rows[0]) return undefined;
+  return {
+    id: rows[0].id,
+    datum: rows[0].datum,
+    attendeeSporterIds: rows[0].attendeeSporterIds as string[],
+  };
+}
+
+export async function deleteTrainingSessionById(sessionId: string): Promise<boolean> {
+  const result = await db
+    .delete(schema.trainingSessions)
+    .where(eq(schema.trainingSessions.id, sessionId));
+  // drizzle returns rowCount in node-postgres driver
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rowCount = (result as any)?.rowCount as number | undefined;
+  return (rowCount ?? 0) > 0;
+}
+
+export async function setSporterAttendanceForSession(
+  sessionId: string,
+  sporterId: string,
+  attended: boolean,
+): Promise<TrainingSession> {
+  const session = await getTrainingSessionById(sessionId);
+  if (!session) {
+    throw new Error(TRAINING_SESSION_NOT_FOUND);
+  }
+  const current = session.attendeeSporterIds;
+  const next = attended
+    ? current.includes(sporterId)
+      ? current
+      : [...current, sporterId]
+    : current.filter((id) => id !== sporterId);
+  await db
+    .update(schema.trainingSessions)
+    .set({ attendeeSporterIds: next })
+    .where(eq(schema.trainingSessions.id, sessionId));
+  return { ...session, attendeeSporterIds: next };
+}
+
 const RECENT_TRAINING_SESSIONS_SHOWN = 16;
+
+function computeSporterAttendanceFromSessions(
+  sporterId: string,
+  sortedSessions: TrainingSession[],
+): {
+  totalSessions: number;
+  attendedSessions: number;
+  percentage: number | null;
+  recentMarks: { attended: boolean }[];
+} {
+  const totalSessions = sortedSessions.length;
+  if (totalSessions === 0) {
+    return {
+      totalSessions: 0,
+      attendedSessions: 0,
+      percentage: null,
+      recentMarks: [],
+    };
+  }
+  const attendedSessions = sortedSessions.filter((s) =>
+    s.attendeeSporterIds.includes(sporterId),
+  ).length;
+  const percentage = Math.round((attendedSessions / totalSessions) * 100);
+  const recentSlice = sortedSessions.slice(-RECENT_TRAINING_SESSIONS_SHOWN);
+  const recentMarks = recentSlice.map((s) => ({
+    attended: s.attendeeSporterIds.includes(sporterId),
+  }));
+  return { totalSessions, attendedSessions, percentage, recentMarks };
+}
 
 export async function getSporterAttendanceSummary(sporterId: string): Promise<{
   totalSessions: number;
@@ -524,24 +606,125 @@ export async function getSporterAttendanceSummary(sporterId: string): Promise<{
     (a, b) =>
       trainingSessionDatumToTime(a.datum) - trainingSessionDatumToTime(b.datum),
   );
-  const totalSessions = sorted.length;
-  if (totalSessions === 0) {
-    return {
-      totalSessions: 0,
-      attendedSessions: 0,
-      percentage: null,
-      recentMarks: [],
-    };
+  return computeSporterAttendanceFromSessions(sporterId, sorted);
+}
+
+export async function getSporterAttendanceArchives(
+  sporterId: string,
+): Promise<SporterAttendanceArchive[]> {
+  const rows = await db
+    .select()
+    .from(schema.sporterAttendanceArchives)
+    .where(eq(schema.sporterAttendanceArchives.sporterId, sporterId));
+  return rows
+    .map((r) => ({
+      id: r.id,
+      sporterId: r.sporterId,
+      seasonBatchId: r.seasonBatchId,
+      seasonLabel: r.seasonLabel,
+      archivedAt: r.archivedAt,
+      attendedSessions: r.attendedSessions,
+      totalSessions: r.totalSessions,
+      percentage: r.percentage,
+    }))
+    .sort(
+      (a, b) =>
+        trainingSessionDatumToTime(b.archivedAt) -
+        trainingSessionDatumToTime(a.archivedAt),
+    );
+}
+
+export async function getAttendanceArchiveBatches(): Promise<
+  Array<{
+    seasonBatchId: string;
+    seasonLabel: string;
+    archivedAt: string;
+    totalSessions: number;
+  }>
+> {
+  const rows = await db.select().from(schema.sporterAttendanceArchives);
+
+  // totalSessions is the same for all sporters in a batch; we collapse by seasonBatchId.
+  const byBatch = new Map<
+    string,
+    {
+      seasonBatchId: string;
+      seasonLabel: string;
+      archivedAt: string;
+      totalSessions: number;
+    }
+  >();
+
+  for (const r of rows) {
+    if (byBatch.has(r.seasonBatchId)) continue;
+    byBatch.set(r.seasonBatchId, {
+      seasonBatchId: r.seasonBatchId,
+      seasonLabel: r.seasonLabel,
+      archivedAt: r.archivedAt,
+      totalSessions: r.totalSessions as number,
+    });
   }
-  const attendedSessions = sorted.filter((s) =>
-    s.attendeeSporterIds.includes(sporterId),
-  ).length;
-  const percentage = Math.round((attendedSessions / totalSessions) * 100);
-  const recentSlice = sorted.slice(-RECENT_TRAINING_SESSIONS_SHOWN);
-  const recentMarks = recentSlice.map((s) => ({
-    attended: s.attendeeSporterIds.includes(sporterId),
-  }));
-  return { totalSessions, attendedSessions, percentage, recentMarks };
+
+  return Array.from(byBatch.values()).sort(
+    (a, b) =>
+      trainingSessionDatumToTime(b.archivedAt) -
+      trainingSessionDatumToTime(a.archivedAt),
+  );
+}
+
+export async function deleteAttendanceArchiveBatch(
+  seasonBatchId: string,
+): Promise<void> {
+  await db
+    .delete(schema.sporterAttendanceArchives)
+    .where(eq(schema.sporterAttendanceArchives.seasonBatchId, seasonBatchId));
+}
+
+export async function archiveAttendanceSeason(seasonLabelInput?: string): Promise<{
+  seasonBatchId: string;
+  seasonLabel: string;
+  archivedAt: string;
+  sporterCount: number;
+  trainingSessionCount: number;
+}> {
+  const sessions = await getTrainingSessions();
+  if (sessions.length === 0) {
+    throw new Error(NO_TRAINING_SESSIONS_TO_ARCHIVE);
+  }
+  const sorted = [...sessions].sort(
+    (a, b) =>
+      trainingSessionDatumToTime(a.datum) - trainingSessionDatumToTime(b.datum),
+  );
+  const sporters = await listSporters();
+  const seasonBatchId = randomUUID();
+  const trimmedLabel = seasonLabelInput?.trim();
+  const seasonLabel = trimmedLabel || defaultTurnSeasonLabel();
+  const archivedAt = formatTodayEuropean();
+
+  await db.transaction(async (tx) => {
+    for (const sporter of sporters) {
+      const stats = computeSporterAttendanceFromSessions(sporter.id, sorted);
+      await tx.insert(schema.sporterAttendanceArchives).values({
+        id: randomUUID(),
+        sporterId: sporter.id,
+        seasonBatchId,
+        seasonLabel,
+        archivedAt,
+        attendedSessions: stats.attendedSessions,
+        totalSessions: stats.totalSessions,
+        percentage: stats.percentage ?? 0,
+      });
+    }
+    await tx.delete(schema.trainingSessions);
+  });
+
+  return {
+    seasonBatchId,
+    seasonLabel,
+    archivedAt,
+    sporterCount: sporters.length,
+    trainingSessionCount: sorted.length,
+  };
 }
 
 export async function getOuderGesprekkenForSporter(

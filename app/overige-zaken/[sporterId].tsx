@@ -11,6 +11,7 @@ import {
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import {
   getBlessuresForSporter,
@@ -89,12 +90,28 @@ export default function OverigeZakenScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.attendanceCard}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.attendanceCard,
+            pressed && styles.attendanceCardPressed,
+          ]}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push({
+              pathname: "/aanwezigheid/[sporterId]",
+              params: { sporterId: sporterId! },
+            });
+          }}
+          testID="aanwezigheid-btn"
+        >
           <View style={styles.attendanceTitleRow}>
             <Text style={styles.attendanceTitle}>Aanwezigheid</Text>
-            <Text style={styles.attendancePercentage}>
-              {attendance?.percentage == null ? "—" : `${attendance.percentage}%`}
-            </Text>
+            <View style={styles.attendanceTitleRight}>
+              <Text style={styles.attendancePercentage}>
+                {attendance?.percentage == null ? "—" : `${attendance.percentage}%`}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textTertiary} />
+            </View>
           </View>
           <Text style={styles.attendanceMeta}>
             {!attendance || attendance.totalSessions === 0
@@ -116,9 +133,9 @@ export default function OverigeZakenScreen() {
             </View>
           )}
           <Text style={styles.marksLegend}>
-            Oranje = aanwezig · Grijs = afwezig (recente trainingen)
+            Oranje = aanwezig · Grijs = afwezig · Tik om te wijzigen
           </Text>
-        </View>
+        </Pressable>
 
         <Pressable
           style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
@@ -208,11 +225,20 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     marginBottom: 4,
   },
+  attendanceCardPressed: {
+    backgroundColor: Colors.surfaceSecondary,
+    transform: [{ scale: 0.99 }],
+  },
   attendanceTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 6,
+  },
+  attendanceTitleRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   attendanceTitle: {
     fontSize: 17,

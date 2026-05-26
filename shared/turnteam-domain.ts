@@ -162,6 +162,18 @@ export interface TrainingSession {
   attendeeSporterIds: string[];
 }
 
+/** Gearchiveerde aanwezigheidssamenvatting na afsluiten van een turnseizoen. */
+export interface SporterAttendanceArchive {
+  id: string;
+  sporterId: string;
+  seasonBatchId: string;
+  seasonLabel: string;
+  archivedAt: string;
+  attendedSessions: number;
+  totalSessions: number;
+  percentage: number;
+}
+
 export type OuderGesprekType = "pop" | "normaal";
 
 export interface OuderGesprek {
@@ -255,6 +267,8 @@ export type AgendaItem =
 
 export const DUPLICATE_TRAINING_SESSION_ERROR = "DUPLICATE_TRAINING_SESSION_ERROR";
 export const INVALID_TRAINING_SESSION_DATUM = "INVALID_TRAINING_SESSION_DATUM";
+export const TRAINING_SESSION_NOT_FOUND = "TRAINING_SESSION_NOT_FOUND";
+export const NO_TRAINING_SESSIONS_TO_ARCHIVE = "NO_TRAINING_SESSIONS_TO_ARCHIVE";
 
 export const DUPLICATE_WEDSTRIJD_ERROR = "DUPLICATE_WEDSTRIJD_ERROR";
 

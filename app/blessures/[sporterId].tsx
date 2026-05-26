@@ -264,7 +264,7 @@ export default function BlessuresScreen() {
           >
             <Text style={styles.cardTitle}>Huidige blessures</Text>
             <Text style={styles.helperText}>
-              Sleep een blessure naar "Vorige blessures" om deze te archiveren.
+              Sleep een blessure naar &quot;Vorige blessures&quot; om deze te archiveren.
             </Text>
             {blessures.current.length === 0 ? (
               <Text style={styles.emptyText}>Geen huidige blessures.</Text>
@@ -315,7 +315,7 @@ export default function BlessuresScreen() {
           >
             <Text style={styles.cardTitle}>Vorige blessures</Text>
             <Text style={styles.helperText}>
-              Sleep terug naar "Huidige blessures" als een blessure terugkomt.
+              Sleep terug naar &quot;Huidige blessures&quot; als een blessure terugkomt.
             </Text>
             {blessures.previous.length === 0 ? (
               <Text style={styles.emptyText}>Nog geen vorige blessures.</Text>

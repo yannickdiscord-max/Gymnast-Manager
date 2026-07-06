@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,12 +16,20 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
-import { addSporter, NIVEAUS } from "@/lib/storage";
+import {
+  addSporter,
+  calculateNiveauFromGeboortedatum,
+  INVALID_GEBOORTEDATUM,
+  NIVEAUS,
+} from "@/lib/storage";
+import { isValidEuropeanDateString } from "@shared/turnteam-dates";
 
 export default function AddSporterScreen() {
   const insets = useSafeAreaInsets();
   const [naam, setNaam] = useState("");
+  const [geboortedatum, setGeboortedatum] = useState("");
   const [niveau, setNiveau] = useState("");
+  const [niveauManuallySet, setNiveauManuallySet] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -29,7 +37,19 @@ export default function AddSporterScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
 
-  const canSubmit = naam.trim().length > 0 && niveau.length > 0;
+  const geboortedatumValid = isValidEuropeanDateString(geboortedatum);
+  const canSubmit =
+    naam.trim().length > 0 && geboortedatumValid && niveau.length > 0;
+
+  useEffect(() => {
+    if (niveauManuallySet) return;
+    if (!geboortedatumValid) {
+      setNiveau("");
+      return;
+    }
+    const suggested = calculateNiveauFromGeboortedatum(geboortedatum);
+    if (suggested) setNiveau(suggested);
+  }, [geboortedatum, geboortedatumValid, niveauManuallySet]);
 
   const handleSubmit = async () => {
     if (!canSubmit || submitting) return;
@@ -42,15 +62,22 @@ export default function AddSporterScreen() {
         throw new Error("Naam moet minstens 2 tekens bevatten");
       }
 
-      await addSporter(naam.trim(), niveau);
+      await addSporter(naam.trim(), niveau, geboortedatum.trim());
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       Alert.alert("Gelukt!", `${naam.trim()} is toegevoegd aan je team.`, [
         { text: "OK", onPress: () => router.back() },
       ]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const msg = err?.message || "Er is iets misgegaan. Probeer opnieuw.";
+      let msg = "Er is iets misgegaan. Probeer opnieuw.";
+      if (err instanceof Error) {
+        if (err.message === INVALID_GEBOORTEDATUM) {
+          msg = "Geboortedatum moet DD-MM-JJJJ zijn (bijv. 14-03-2012).";
+        } else {
+          msg = err.message || msg;
+        }
+      }
       setErrorMessage(msg);
       setTimeout(() => setErrorMessage(""), 5000);
     } finally {
@@ -89,8 +116,22 @@ export default function AddSporterScreen() {
             value={naam}
             onChangeText={setNaam}
             autoCapitalize="words"
-            returnKeyType="done"
+            returnKeyType="next"
             testID="naam-input"
+          />
+        </View>
+
+        <View style={styles.fieldGroup}>
+          <Text style={styles.label}>Geboortedatum (DD-MM-JJJJ)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="14-03-2012"
+            placeholderTextColor={Colors.textTertiary}
+            value={geboortedatum}
+            onChangeText={setGeboortedatum}
+            keyboardType="numbers-and-punctuation"
+            maxLength={10}
+            testID="geboortedatum-input"
           />
         </View>
 
@@ -118,6 +159,11 @@ export default function AddSporterScreen() {
               color={Colors.textSecondary}
             />
           </Pressable>
+          {geboortedatumValid && !niveauManuallySet && !!niveau && (
+            <Text style={styles.helperText}>
+              Automatisch ingevuld op basis van leeftijd in dit turnseizoen.
+            </Text>
+          )}
         </View>
 
         {!!errorMessage && (
@@ -180,6 +226,7 @@ export default function AddSporterScreen() {
                   ]}
                   onPress={() => {
                     Haptics.selectionAsync();
+                    setNiveauManuallySet(true);
                     setNiveau(item);
                     setShowDropdown(false);
                   }}
@@ -252,6 +299,13 @@ const styles = StyleSheet.create({
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  helperText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textTertiary,
+    lineHeight: 17,
   },
   dropdownTrigger: {
     flexDirection: "row",

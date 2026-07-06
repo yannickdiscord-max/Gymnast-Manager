@@ -35,6 +35,7 @@ export const onderdelenCatalog = pgTable("onderdelen_catalog", {
 export const sporters = pgTable("sporters", {
   id: varchar("id", { length: 64 }).primaryKey(),
   naam: text("naam").notNull(),
+  geboortedatum: varchar("geboortedatum", { length: 16 }).notNull().default(""),
   niveau: text("niveau").notNull(),
   favoriet: boolean("favoriet").notNull().default(false),
   onderdelen: jsonb("onderdelen").notNull(),

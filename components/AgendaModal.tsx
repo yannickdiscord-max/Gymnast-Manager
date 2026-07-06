@@ -509,6 +509,21 @@ export default function AgendaModal({
     });
   };
 
+  const handleVerjaardagPress = (item: AgendaItem & { source: "verjaardag" }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onClose();
+    router.push({
+      pathname: "/sporter/[id]",
+      params: { id: item.sporterId },
+    });
+  };
+
+  const verjaardagCountdownLabel = (dagen: number): string => {
+    if (dagen === 0) return "Vandaag";
+    if (dagen === 1) return "Morgen";
+    return `Over ${dagen} dagen`;
+  };
+
   const showKalenderDetail = (item: AgendaItemKalender) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const lines: string[] = [item.categorieLabel, `Datum: ${item.datum}`];
@@ -518,6 +533,32 @@ export default function AgendaModal({
   };
 
   const renderItem = ({ item }: { item: AgendaItem }) => {
+    if (item.source === "verjaardag") {
+      return (
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          onPress={() => handleVerjaardagPress(item)}
+        >
+          <View style={[styles.typeTag, styles.typeTagVerjaardag]}>
+            <Text style={styles.typeTagText}>Verjaardag</Text>
+          </View>
+          <Text style={styles.rowTitle} numberOfLines={2}>
+            {item.sporterNaam}
+          </Text>
+          <View style={styles.metaRow}>
+            <Ionicons name="calendar-outline" size={14} color={Colors.textTertiary} />
+            <Text style={styles.metaText}>{item.datum}</Text>
+          </View>
+          <View style={styles.metaRow}>
+            <Ionicons name="gift-outline" size={14} color={Colors.textTertiary} />
+            <Text style={styles.metaText}>
+              Wordt {item.leeftijd} jaar · {verjaardagCountdownLabel(item.dagenTotVerjaardag)}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    }
+
     if (item.source === "ouder_gesprek") {
       return (
         <Pressable
@@ -1502,6 +1543,9 @@ const styles = StyleSheet.create({
   },
   typeTagOuderGesprek: {
     backgroundColor: "#5A5A5A",
+  },
+  typeTagVerjaardag: {
+    backgroundColor: "#9D174D",
   },
   typeTagText: {
     fontSize: 11,

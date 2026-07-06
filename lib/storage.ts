@@ -46,6 +46,7 @@ export {
   ELEMENTGROEPEN,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
+  INVALID_GEBOORTEDATUM,
   INVALID_TRAINING_SESSION_DATUM,
   NO_TRAINING_SESSIONS_TO_ARCHIVE,
   TRAINING_SESSION_NOT_FOUND,
@@ -61,6 +62,11 @@ export {
   getMinimumForNiveau,
   sortOnderdelen,
 } from "../shared/turnteam-domain";
+
+export {
+  calculateNiveauFromGeboortedatum,
+  calculateTurnSeasonAgeFromGeboortedatum,
+} from "../shared/turnteam-dates";
 
 export type { OuderGesprekType } from "../shared/turnteam-domain";
 
@@ -94,10 +100,14 @@ export async function getSporters(): Promise<Sporter[]> {
   return apiFetch("/api/sporters");
 }
 
-export async function addSporter(naam: string, niveau: string): Promise<Sporter> {
+export async function addSporter(
+  naam: string,
+  niveau: string,
+  geboortedatum: string,
+): Promise<Sporter> {
   return apiFetch("/api/sporters", {
     method: "POST",
-    body: JSON.stringify({ naam, niveau }),
+    body: JSON.stringify({ naam, niveau, geboortedatum }),
   });
 }
 

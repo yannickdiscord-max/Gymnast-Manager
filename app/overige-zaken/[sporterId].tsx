@@ -17,6 +17,7 @@ import {
   getBlessuresForSporter,
   getSporter,
   getSporterAttendanceSummary,
+  calculateTurnSeasonAgeFromGeboortedatum,
   type Sporter,
   type SporterBlessures,
 } from "@/lib/storage";
@@ -62,6 +63,11 @@ export default function OverigeZakenScreen() {
     router.push({ pathname: "/sporter/[id]", params: { id: sporterId } });
   };
 
+  const leeftijd =
+    sporter?.geboortedatum
+      ? calculateTurnSeasonAgeFromGeboortedatum(sporter.geboortedatum)
+      : null;
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top + webTopInset }]}>
@@ -78,7 +84,12 @@ export default function OverigeZakenScreen() {
         </Pressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Overige zaken</Text>
-          {!!sporter && <Text style={styles.headerSub}>{sporter.naam}</Text>}
+          {!!sporter && (
+            <Text style={styles.headerSub}>
+              {sporter.naam}
+              {leeftijd != null ? ` · ${leeftijd} jaar` : ""}
+            </Text>
+          )}
         </View>
         <View style={styles.headerRightPlaceholder} />
       </View>

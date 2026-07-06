@@ -57,6 +57,10 @@ export function trainingSessionDatumToTime(datum: string): number {
 
 export function formatTodayEuropean(): string {
   const d = new Date();
+  return formatLocalDateEuropean(d);
+}
+
+export function formatLocalDateEuropean(d: Date): string {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
@@ -86,4 +90,105 @@ export function calendarDaysBetweenLocalDates(earlier: Date, later: Date): numbe
   const u1 = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
   const u2 = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
   return Math.floor((u2 - u1) / 86400000);
+}
+
+/** Turnseizoen loopt van augustus t/m juli. Referentiedatum = 31 dec van het 2e kalenderjaar. */
+export function getCurrentTurnSeasonReferenceDate(reference = new Date()): Date {
+  const y = reference.getFullYear();
+  const m = reference.getMonth() + 1;
+  const seasonStartYear = m >= 8 ? y : y - 1;
+  return new Date(seasonStartYear + 1, 11, 31);
+}
+
+export function calculateAgeOnDate(birth: Date, onDate: Date): number {
+  let age = onDate.getFullYear() - birth.getFullYear();
+  if (
+    onDate.getMonth() < birth.getMonth() ||
+    (onDate.getMonth() === birth.getMonth() &&
+      onDate.getDate() < birth.getDate())
+  ) {
+    age--;
+  }
+  return age;
+}
+
+export function niveauFromTurnSeasonAge(age: number): string {
+  if (age >= 19) return "Senior";
+  if (age >= 17) return "Junior 2";
+  if (age >= 15) return "Junior 1";
+  if (age >= 13) return "Jeugd";
+  if (age >= 11) return "Pupil";
+  return "Instap";
+}
+
+export function calculateTurnSeasonAgeFromGeboortedatum(
+  geboortedatum: string,
+  reference = new Date(),
+): number | null {
+  if (!isValidEuropeanDateString(geboortedatum)) return null;
+  const birth = europeanDatumStringToLocalDate(normalizeEuropeanDate(geboortedatum));
+  const ref = getCurrentTurnSeasonReferenceDate(reference);
+  return calculateAgeOnDate(birth, ref);
+}
+
+export function calculateNiveauFromGeboortedatum(
+  geboortedatum: string,
+  reference = new Date(),
+): string | null {
+  const age = calculateTurnSeasonAgeFromGeboortedatum(geboortedatum, reference);
+  if (age === null) return null;
+  return niveauFromTurnSeasonAge(age);
+}
+
+function resolveBirthdayInYear(
+  year: number,
+  birthMonth: number,
+  birthDay: number,
+): Date {
+  const candidate = new Date(year, birthMonth, birthDay);
+  if (
+    candidate.getFullYear() !== year ||
+    candidate.getMonth() !== birthMonth ||
+    candidate.getDate() !== birthDay
+  ) {
+    return new Date(year, birthMonth + 1, 0);
+  }
+  return candidate;
+}
+
+export function getNextBirthdayLocalDate(
+  geboortedatum: string,
+  reference = new Date(),
+): Date | null {
+  if (!isValidEuropeanDateString(geboortedatum)) return null;
+  const birth = europeanDatumStringToLocalDate(normalizeEuropeanDate(geboortedatum));
+  const birthDay = birth.getDate();
+  const birthMonth = birth.getMonth();
+  const refYear = reference.getFullYear();
+  const todayStart = new Date(refYear, reference.getMonth(), reference.getDate());
+
+  let candidate = resolveBirthdayInYear(refYear, birthMonth, birthDay);
+  if (candidate.getTime() < todayStart.getTime()) {
+    candidate = resolveBirthdayInYear(refYear + 1, birthMonth, birthDay);
+  }
+  return candidate;
+}
+
+/** Returns upcoming birthday if it falls within maxDaysBefore days (inclusive), including today. */
+export function getBirthdayAgendaWindowDays(
+  geboortedatum: string,
+  maxDaysBefore = 7,
+  reference = new Date(),
+): { birthday: Date; daysUntil: number } | null {
+  const birthday = getNextBirthdayLocalDate(geboortedatum, reference);
+  if (!birthday) return null;
+
+  const todayStart = new Date(
+    reference.getFullYear(),
+    reference.getMonth(),
+    reference.getDate(),
+  );
+  const daysUntil = calendarDaysBetweenLocalDates(todayStart, birthday);
+  if (daysUntil < 0 || daysUntil > maxDaysBefore) return null;
+  return { birthday, daysUntil };
 }

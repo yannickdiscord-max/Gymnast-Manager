@@ -3,6 +3,8 @@
 export interface Sporter {
   id: string;
   naam: string;
+  /** Geboortedatum in DD-MM-JJJJ. */
+  geboortedatum: string;
   niveau: string;
   favoriet: boolean;
   onderdelen: Record<string, string[]>;
@@ -117,13 +119,18 @@ export const ONDERDELEN_PER_TOESTEL: Record<Toestel, TurnOnderdeel[]> = {
 
 export const NIVEAU_MINIMUM: Record<string, number> = {
   Instap: 2,
+  Pupil: 3,
+  Jeugd: 5,
+  "Junior 1": 6,
+  "Junior 2": 7,
+  Senior: 8,
+  Selectie: 10,
+  // Legacy niveaus (bestaande sporters)
   "Pupil 1": 3,
   "Pupil 2": 4,
   "Jeugd 1": 5,
   "Jeugd 2": 6,
   Junior: 7,
-  Senior: 8,
-  Selectie: 10,
 };
 
 export function getMinimumForNiveau(niveau: string, toestel: Toestel): number {
@@ -260,10 +267,22 @@ export type AgendaItemOuderGesprek = {
   sporterNaam: string;
 };
 
+export type AgendaItemVerjaardag = {
+  source: "verjaardag";
+  id: string;
+  titel: string;
+  datum: string;
+  sporterId: string;
+  sporterNaam: string;
+  leeftijd: number;
+  dagenTotVerjaardag: number;
+};
+
 export type AgendaItem =
   | AgendaItemWedstrijd
   | AgendaItemKalender
-  | AgendaItemOuderGesprek;
+  | AgendaItemOuderGesprek
+  | AgendaItemVerjaardag;
 
 export const DUPLICATE_TRAINING_SESSION_ERROR = "DUPLICATE_TRAINING_SESSION_ERROR";
 export const INVALID_TRAINING_SESSION_DATUM = "INVALID_TRAINING_SESSION_DATUM";
@@ -280,6 +299,7 @@ export const INVALID_AGENDA_DATUM = "INVALID_AGENDA_DATUM";
 export const LESPLAN_ACTION_FORBIDDEN = "LESPLAN_ACTION_FORBIDDEN";
 
 export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";
+export const INVALID_GEBOORTEDATUM = "INVALID_GEBOORTEDATUM";
 
 export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
   tA: 0.1,
@@ -311,10 +331,9 @@ export function calculateDWaarde(
 
 export const NIVEAUS = [
   "Instap",
-  "Pupil 1",
-  "Pupil 2",
-  "Jeugd 1",
-  "Jeugd 2",
-  "Junior",
+  "Pupil",
+  "Jeugd",
+  "Junior 1",
+  "Junior 2",
   "Senior",
 ];

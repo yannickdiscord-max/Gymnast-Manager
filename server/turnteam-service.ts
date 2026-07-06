@@ -23,6 +23,7 @@ import {
   NO_TRAINING_SESSIONS_TO_ARCHIVE,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
+  INVALID_GEBOORTEDATUM,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   LESPLAN_ACTION_FORBIDDEN,
@@ -34,7 +35,10 @@ import {
 } from "../shared/turnteam-domain";
 import {
   calendarDaysBetweenLocalDates,
+  calculateAgeOnDate,
   europeanDatumStringToLocalDate,
+  formatLocalDateEuropean,
+  getBirthdayAgendaWindowDays,
   isValidEuropeanDateString,
   normalizeEuropeanDate,
   normalizeOuderGesprekDatum,
@@ -111,24 +115,28 @@ function migrateSporterRow(s: unknown): Sporter {
     return r;
   };
   const row = s as Partial<Sporter>;
+  const withGeboortedatum = (base: Sporter): Sporter => ({
+    ...base,
+    geboortedatum: base.geboortedatum ?? "",
+  });
   if (Array.isArray(row.onderdelen)) {
-    return {
+    return withGeboortedatum({
       ...(row as Sporter),
       onderdelen: emptyToestellen(),
       oefening: emptyToestellen(),
-    };
+    });
   }
   if (!row.onderdelen || typeof row.onderdelen !== "object") {
-    return {
+    return withGeboortedatum({
       ...(row as Sporter),
       onderdelen: emptyToestellen(),
       oefening: emptyToestellen(),
-    };
+    });
   }
   if (!row.oefening || typeof row.oefening !== "object") {
-    return { ...(row as Sporter), oefening: emptyToestellen() };
+    return withGeboortedatum({ ...(row as Sporter), oefening: emptyToestellen() });
   }
-  return row as Sporter;
+  return withGeboortedatum(row as Sporter);
 }
 
 export async function listSporters(): Promise<Sporter[]> {
@@ -137,6 +145,7 @@ export async function listSporters(): Promise<Sporter[]> {
     migrateSporterRow({
       id: r.id,
       naam: r.naam,
+      geboortedatum: r.geboortedatum,
       niveau: r.niveau,
       favoriet: r.favoriet,
       onderdelen: r.onderdelen,
@@ -238,7 +247,16 @@ export async function deleteOnderdeel(
     .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
 }
 
-export async function addSporter(naam: string, niveau: string): Promise<Sporter> {
+export async function addSporter(
+  naam: string,
+  niveau: string,
+  geboortedatumInput: string,
+): Promise<Sporter> {
+  const trimmed = geboortedatumInput.trim();
+  if (!isValidEuropeanDateString(trimmed)) {
+    throw new Error(INVALID_GEBOORTEDATUM);
+  }
+  const geboortedatum = normalizeEuropeanDate(trimmed);
   const onderdelen: Record<string, string[]> = {};
   const oefening: Record<string, string[]> = {};
   for (const t of TOESTELLEN) {
@@ -249,6 +267,7 @@ export async function addSporter(naam: string, niveau: string): Promise<Sporter>
   const row: typeof schema.sporters.$inferInsert = {
     id,
     naam,
+    geboortedatum,
     niveau,
     favoriet: false,
     onderdelen,
@@ -282,6 +301,7 @@ export async function getSporter(id: string): Promise<Sporter | undefined> {
   return migrateSporterRow({
     id: rows[0].id,
     naam: rows[0].naam,
+    geboortedatum: rows[0].geboortedatum,
     niveau: rows[0].niveau,
     favoriet: rows[0].favoriet,
     onderdelen: rows[0].onderdelen,
@@ -1076,6 +1096,28 @@ export async function getUpcomingAgendaItems(options: {
     });
   }
 
+  for (const s of sporters) {
+    if (favorietIds !== null && !favorietIds.has(s.id)) continue;
+    const geboortedatum = s.geboortedatum?.trim() ?? "";
+    if (!geboortedatum) continue;
+
+    const window = getBirthdayAgendaWindowDays(geboortedatum, 7, now);
+    if (!window) continue;
+
+    const birth = europeanDatumStringToLocalDate(normalizeEuropeanDate(geboortedatum));
+    const datum = formatLocalDateEuropean(window.birthday);
+    items.push({
+      source: "verjaardag",
+      id: `verjaardag-${s.id}-${datum}`,
+      titel: s.naam,
+      datum,
+      sporterId: s.id,
+      sporterNaam: s.naam,
+      leeftijd: calculateAgeOnDate(birth, window.birthday),
+      dagenTotVerjaardag: window.daysUntil,
+    });
+  }
+
   items.sort(
     (a, b) =>
       wedstrijdDatumToTimestamp(a.datum)! -
@@ -1463,6 +1505,7 @@ export async function importLegacyPayload(body: {
       await tx.insert(schema.sporters).values({
         id: m.id,
         naam: m.naam,
+        geboortedatum: m.geboortedatum ?? "",
         niveau: m.niveau,
         favoriet: m.favoriet,
         onderdelen: m.onderdelen,

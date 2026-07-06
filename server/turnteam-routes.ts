@@ -13,6 +13,7 @@ import {
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
+  INVALID_GEBOORTEDATUM,
   INVALID_TRAINING_SESSION_DATUM,
   LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
@@ -60,11 +61,21 @@ export function registerTurnteamRoutes(app: Express): void {
     asyncHandler(async (req, res) => {
       const naam = String(req.body?.naam ?? "").trim();
       const niveau = String(req.body?.niveau ?? "").trim();
-      if (!naam || !niveau) {
-        badRequest(res, "naam and niveau are required");
+      const geboortedatum = String(req.body?.geboortedatum ?? "").trim();
+      if (!naam || !niveau || !geboortedatum) {
+        badRequest(res, "naam, geboortedatum and niveau are required");
         return;
       }
-      res.json(await svc.addSporter(naam, niveau));
+      try {
+        res.json(await svc.addSporter(naam, niveau, geboortedatum));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === INVALID_GEBOORTEDATUM) {
+          res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
     }),
   );
 

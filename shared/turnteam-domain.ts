@@ -15,6 +15,8 @@ export interface TurnOnderdeel {
   naam: string;
   niveau: TurnOnderdeelNiveau;
   elementgroep: 1 | 2 | 3 | 4;
+  /** Vaste D-waarde per onderdeel (alleen Sprong). */
+  dWaarde?: number;
 }
 
 export const TURN_ONDERDEEL_NIVEAUS = ["tA", "A", "B", "C", "D", "E"] as const;
@@ -39,6 +41,43 @@ export const TOESTELLEN = [
 ] as const;
 
 export type Toestel = (typeof TOESTELLEN)[number];
+
+export const SPRONG_TOESTEL: Toestel = "Sprong";
+export const SPRONG_MAX_OEFENING_ONDERDELEN = 2;
+
+export function isSprongToestel(toestel: string): toestel is typeof SPRONG_TOESTEL {
+  return toestel === SPRONG_TOESTEL;
+}
+
+/** Deterministic D-waarde tussen 2.0 en 2.6 (nieuwe installaties). */
+export function sprongDefaultDWaardeForNaam(naam: string): number {
+  let hash = 0;
+  for (let i = 0; i < naam.length; i++) {
+    hash = (hash * 31 + naam.charCodeAt(i)) | 0;
+  }
+  const offset = (Math.abs(hash) % 61) / 100;
+  return Math.round((2.0 + offset) * 10) / 10;
+}
+
+/** Eenmalige random D-waarde tussen 2.0 en 2.6 voor bestaande onderdelen zonder waarde. */
+export function randomSprongDWaarde(): number {
+  return Math.round((2.0 + Math.random() * 0.6) * 10) / 10;
+}
+
+export function sprongDWaardeMissing(onderdeel: TurnOnderdeel): boolean {
+  return onderdeel.dWaarde == null || Number.isNaN(onderdeel.dWaarde);
+}
+
+function sprongOnderdeel(
+  naam: string,
+): TurnOnderdeel {
+  return {
+    naam,
+    niveau: "tA",
+    elementgroep: 1,
+    dWaarde: sprongDefaultDWaardeForNaam(naam),
+  };
+}
 
 export const ONDERDELEN_PER_TOESTEL: Record<Toestel, TurnOnderdeel[]> = {
   Vloer: [
@@ -80,16 +119,16 @@ export const ONDERDELEN_PER_TOESTEL: Record<Toestel, TurnOnderdeel[]> = {
     { naam: "Afzwaai", niveau: "E", elementgroep: 4 },
   ],
   Sprong: [
-    { naam: "Hurksprong", niveau: "tA", elementgroep: 1 },
-    { naam: "Streeksprong", niveau: "tA", elementgroep: 1 },
-    { naam: "Gratssprong", niveau: "A", elementgroep: 2 },
-    { naam: "Handspring", niveau: "A", elementgroep: 1 },
-    { naam: "Overslag", niveau: "B", elementgroep: 1 },
-    { naam: "Yamashita", niveau: "B", elementgroep: 2 },
-    { naam: "Tsukahara", niveau: "C", elementgroep: 3 },
-    { naam: "Salto voorwaarts", niveau: "C", elementgroep: 4 },
-    { naam: "Schroefsprong", niveau: "D", elementgroep: 4 },
-    { naam: "Rondat afsprong", niveau: "E", elementgroep: 4 },
+    sprongOnderdeel("Hurksprong"),
+    sprongOnderdeel("Streeksprong"),
+    sprongOnderdeel("Gratssprong"),
+    sprongOnderdeel("Handspring"),
+    sprongOnderdeel("Overslag"),
+    sprongOnderdeel("Yamashita"),
+    sprongOnderdeel("Tsukahara"),
+    sprongOnderdeel("Salto voorwaarts"),
+    sprongOnderdeel("Schroefsprong"),
+    sprongOnderdeel("Rondat afsprong"),
   ],
   Brug: [
     { naam: "Steunzwaaien", niveau: "tA", elementgroep: 1 },
@@ -155,6 +194,20 @@ export function sortOnderdelen(onderdelen: TurnOnderdeel[]): TurnOnderdeel[] {
     if (diff !== 0) return diff;
     return a.naam.localeCompare(b.naam);
   });
+}
+
+export function sortOnderdelenForToestel(
+  toestel: Toestel,
+  onderdelen: TurnOnderdeel[],
+): TurnOnderdeel[] {
+  if (isSprongToestel(toestel)) {
+    return [...onderdelen].sort((a, b) => {
+      const diff = (b.dWaarde ?? 0) - (a.dWaarde ?? 0);
+      if (diff !== 0) return diff;
+      return a.naam.localeCompare(b.naam);
+    });
+  }
+  return sortOnderdelen(onderdelen);
 }
 
 export interface SporterBlessures {
@@ -300,6 +353,7 @@ export const LESPLAN_ACTION_FORBIDDEN = "LESPLAN_ACTION_FORBIDDEN";
 
 export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";
 export const INVALID_GEBOORTEDATUM = "INVALID_GEBOORTEDATUM";
+export const INVALID_SPRONG_DWAARDE = "INVALID_SPRONG_DWAARDE";
 
 export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
   tA: 0.1,
@@ -327,6 +381,35 @@ export function calculateDWaarde(
   const elementgroepBonus = presentGroepen.size * 0.5;
 
   return niveauScore + elementgroepBonus;
+}
+
+export function calculateSprongOefeningDWaarde(
+  selectedNamen: string[],
+  allOnderdelen: TurnOnderdeel[],
+): number {
+  const values = selectedNamen
+    .map((naam) => allOnderdelen.find((o) => o.naam === naam)?.dWaarde)
+    .filter((v): v is number => v != null && !Number.isNaN(v));
+  return values.length ? Math.max(...values) : 0;
+}
+
+export function calculateOefeningDWaarde(
+  toestel: Toestel | string,
+  selectedNamen: string[],
+  allOnderdelen: TurnOnderdeel[],
+): number {
+  if (isSprongToestel(toestel)) {
+    return calculateSprongOefeningDWaarde(selectedNamen, allOnderdelen);
+  }
+  return calculateDWaarde(selectedNamen, allOnderdelen);
+}
+
+export function parseSprongDWaardeInput(value: string): number | null {
+  const trimmed = value.trim().replace(",", ".");
+  if (!trimmed) return null;
+  const parsed = Number.parseFloat(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.round(parsed * 10) / 10;
 }
 
 export const NIVEAUS = [

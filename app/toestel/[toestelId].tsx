@@ -29,7 +29,10 @@ import {
   TURN_ONDERDEEL_NIVEAUS,
   ELEMENTGROEPEN,
   ELEMENTGROEP_ROMAN,
-  calculateDWaarde,
+  calculateOefeningDWaarde,
+  SPRONG_MAX_OEFENING_ONDERDELEN,
+  parseSprongDWaardeInput,
+  isSprongToestel,
   type Sporter,
   type Toestel,
   type TurnOnderdeelNiveau,
@@ -63,12 +66,14 @@ export default function ToestelScreen() {
   const [newNaam, setNewNaam] = useState("");
   const [newNiveau, setNewNiveau] = useState<TurnOnderdeelNiveau>("A");
   const [newElementgroep, setNewElementgroep] = useState<Elementgroep>(1);
+  const [newDWaarde, setNewDWaarde] = useState("2.0");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
   const toestel = toestelId as Toestel;
+  const isSprong = isSprongToestel(toestel);
 
   const oefeningRef = useRef<string[]>([]);
   const dragRef = useRef<{ naam: string; toIdx: number } | null>(null);
@@ -198,6 +203,18 @@ export default function ToestelScreen() {
 
   const handleAddToOefening = async (naam: string) => {
     if (!sporter) return;
+    if (
+      isSprong &&
+      !oefening.includes(naam) &&
+      oefening.length >= SPRONG_MAX_OEFENING_ONDERDELEN
+    ) {
+      setActionItem(null);
+      Alert.alert(
+        "Maximum bereikt",
+        `Bij Sprong kunnen maximaal ${SPRONG_MAX_OEFENING_ONDERDELEN} onderdelen in de oefening.`,
+      );
+      return;
+    }
     setActionItem(null);
     const current = sporter.onderdelen[toestel] || [];
     const updatedOnderdelen = current.includes(naam) ? current : [...current, naam];
@@ -246,6 +263,7 @@ export default function ToestelScreen() {
     setNewNaam("");
     setNewNiveau("A");
     setNewElementgroep(1);
+    setNewDWaarde("2.0");
     setErrorMsg("");
     setAddModalVisible(true);
   };
@@ -263,8 +281,28 @@ export default function ToestelScreen() {
       setErrorMsg("Dit onderdeel bestaat al");
       return;
     }
+    let payload: TurnOnderdeel;
+    if (isSprong) {
+      const dWaarde = parseSprongDWaardeInput(newDWaarde);
+      if (dWaarde == null) {
+        setErrorMsg("Vul een geldige D-waarde in (bijv. 2.4)");
+        return;
+      }
+      payload = {
+        naam: trimmed,
+        niveau: "tA",
+        elementgroep: 1,
+        dWaarde,
+      };
+    } else {
+      payload = {
+        naam: trimmed,
+        niveau: newNiveau,
+        elementgroep: newElementgroep,
+      };
+    }
     setSaving(true);
-    await addOnderdeel(toestel, { naam: trimmed, niveau: newNiveau, elementgroep: newElementgroep });
+    await addOnderdeel(toestel, payload);
     const updated = await getOnderdelen(toestel);
     setOnderdelen(updated);
     setSaving(false);
@@ -346,13 +384,25 @@ export default function ToestelScreen() {
 
   const displayOnderdelen = onderdelen.filter((o) => {
     if (oefening.includes(o.naam)) return false;
-    if (activeFilter && o.niveau !== activeFilter) return false;
-    if (activeElementgroepFilter && o.elementgroep !== activeElementgroepFilter) return false;
+    if (!isSprong) {
+      if (activeFilter && o.niveau !== activeFilter) return false;
+      if (activeElementgroepFilter && o.elementgroep !== activeElementgroepFilter) return false;
+    }
     return true;
   });
 
   const isInOefening = actionItem ? oefening.includes(actionItem.naam) : false;
   const isGeleerd = actionItem ? selected.includes(actionItem.naam) : false;
+  const sprongOefeningVol =
+    isSprong && oefening.length >= SPRONG_MAX_OEFENING_ONDERDELEN;
+
+  const renderSprongDWaardeTag = (dWaarde?: number) => (
+    <View style={styles.dWaardeTag}>
+      <Text style={styles.dWaardeTagText}>
+        {dWaarde != null && !Number.isNaN(dWaarde) ? dWaarde.toFixed(1) : "?"}
+      </Text>
+    </View>
+  );
 
   const renderOnderdeel = ({ item }: { item: TurnOnderdeel }) => {
     const isSelected = selected.includes(item.naam);
@@ -376,16 +426,22 @@ export default function ToestelScreen() {
             {item.naam}
           </Text>
         </View>
-        <View style={[styles.niveauTag, getNiveauTagStyle(item.niveau)]}>
-          <Text style={[styles.niveauTagText, getNiveauTagTextStyle(item.niveau)]}>
-            {item.niveau}
-          </Text>
-        </View>
-        <View style={styles.elementgroepTag}>
-          <Text style={styles.elementgroepTagText}>
-            {ELEMENTGROEP_ROMAN[item.elementgroep ?? 1]}
-          </Text>
-        </View>
+        {isSprong ? (
+          renderSprongDWaardeTag(item.dWaarde)
+        ) : (
+          <>
+            <View style={[styles.niveauTag, getNiveauTagStyle(item.niveau)]}>
+              <Text style={[styles.niveauTagText, getNiveauTagTextStyle(item.niveau)]}>
+                {item.niveau}
+              </Text>
+            </View>
+            <View style={styles.elementgroepTag}>
+              <Text style={styles.elementgroepTagText}>
+                {ELEMENTGROEP_ROMAN[item.elementgroep ?? 1]}
+              </Text>
+            </View>
+          </>
+        )}
         <Pressable
           onPress={() => handleDeletePress(item.naam)}
           hitSlop={8}
@@ -397,7 +453,7 @@ export default function ToestelScreen() {
     );
   };
 
-  const oefeningDWaarde = calculateDWaarde(oefening, onderdelen);
+  const oefeningDWaarde = calculateOefeningDWaarde(toestel, oefening, onderdelen);
 
   const OefeningSection = oefening.length > 0 ? (
     <View style={styles.oefeningSection}>
@@ -433,16 +489,22 @@ export default function ToestelScreen() {
                 <View style={styles.oefeningInfo}>
                   <Text style={styles.oefeningText}>{item.naam}</Text>
                 </View>
-                <View style={[styles.niveauTag, getNiveauTagStyle(item.niveau)]}>
-                  <Text style={[styles.niveauTagText, getNiveauTagTextStyle(item.niveau)]}>
-                    {item.niveau}
-                  </Text>
-                </View>
-                <View style={styles.elementgroepTag}>
-                  <Text style={styles.elementgroepTagText}>
-                    {ELEMENTGROEP_ROMAN[item.elementgroep ?? 1]}
-                  </Text>
-                </View>
+                {isSprong ? (
+                  renderSprongDWaardeTag(item.dWaarde)
+                ) : (
+                  <>
+                    <View style={[styles.niveauTag, getNiveauTagStyle(item.niveau)]}>
+                      <Text style={[styles.niveauTagText, getNiveauTagTextStyle(item.niveau)]}>
+                        {item.niveau}
+                      </Text>
+                    </View>
+                    <View style={styles.elementgroepTag}>
+                      <Text style={styles.elementgroepTagText}>
+                        {ELEMENTGROEP_ROMAN[item.elementgroep ?? 1]}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </Pressable>
               <View {...getPanHandlers(naam)} style={styles.gripHandle}>
                 <Ionicons name="reorder-three-outline" size={24} color={OEFENING_COLOR} />
@@ -477,6 +539,8 @@ export default function ToestelScreen() {
         ListHeaderComponent={
           <>
             {OefeningSection}
+            {!isSprong && (
+              <>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -520,10 +584,12 @@ export default function ToestelScreen() {
                 );
               })}
             </View>
+              </>
+            )}
           </>
         }
         ListEmptyComponent={
-          activeFilter || activeElementgroepFilter ? (
+          !isSprong && (activeFilter || activeElementgroepFilter) ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="fitness-outline" size={40} color={Colors.textTertiary} />
               <Text style={styles.emptyText}>
@@ -559,16 +625,22 @@ export default function ToestelScreen() {
             <>
               <View style={styles.actionHeader}>
                 <Text style={styles.actionTitle} numberOfLines={1}>{actionItem.naam}</Text>
-                <View style={[styles.niveauTag, getNiveauTagStyle(actionItem.niveau)]}>
-                  <Text style={[styles.niveauTagText, getNiveauTagTextStyle(actionItem.niveau)]}>
-                    {actionItem.niveau}
-                  </Text>
-                </View>
-                <View style={styles.elementgroepTag}>
-                  <Text style={styles.elementgroepTagText}>
-                    {ELEMENTGROEP_ROMAN[actionItem.elementgroep ?? 1]}
-                  </Text>
-                </View>
+                {isSprong ? (
+                  renderSprongDWaardeTag(actionItem.dWaarde)
+                ) : (
+                  <>
+                    <View style={[styles.niveauTag, getNiveauTagStyle(actionItem.niveau)]}>
+                      <Text style={[styles.niveauTagText, getNiveauTagTextStyle(actionItem.niveau)]}>
+                        {actionItem.niveau}
+                      </Text>
+                    </View>
+                    <View style={styles.elementgroepTag}>
+                      <Text style={styles.elementgroepTagText}>
+                        {ELEMENTGROEP_ROMAN[actionItem.elementgroep ?? 1]}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </View>
 
               <View style={styles.statusRow}>
@@ -595,13 +667,21 @@ export default function ToestelScreen() {
               <View style={styles.actionButtons}>
                 {!isInOefening && (
                   <Pressable
-                    style={({ pressed }) => [styles.actionBtn, styles.actionBtnOefening, pressed && styles.actionBtnPressed]}
+                    style={({ pressed }) => [
+                      styles.actionBtn,
+                      styles.actionBtnOefening,
+                      sprongOefeningVol && styles.actionBtnDisabled,
+                      pressed && !sprongOefeningVol && styles.actionBtnPressed,
+                    ]}
                     onPress={() => handleAddToOefening(actionItem.naam)}
+                    disabled={sprongOefeningVol}
                     testID="add-to-oefening-btn"
                   >
                     <Ionicons name="star-outline" size={20} color={OEFENING_COLOR} />
                     <Text style={[styles.actionBtnText, styles.actionBtnTextOefening]}>
-                      Aan oefening toevoegen
+                      {sprongOefeningVol
+                        ? "Oefening vol (max. 2)"
+                        : "Aan oefening toevoegen"}
                     </Text>
                   </Pressable>
                 )}
@@ -676,6 +756,24 @@ export default function ToestelScreen() {
             />
             {!!errorMsg && <Text style={styles.errorText}>{errorMsg}</Text>}
 
+            {isSprong ? (
+              <>
+                <Text style={[styles.fieldLabel, { marginTop: 16 }]}>D-waarde</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={newDWaarde}
+                  onChangeText={(t) => {
+                    setNewDWaarde(t);
+                    setErrorMsg("");
+                  }}
+                  placeholder="2.4"
+                  placeholderTextColor={Colors.textTertiary}
+                  keyboardType="decimal-pad"
+                  testID="custom-dwaarde-input"
+                />
+              </>
+            ) : (
+              <>
             <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Niveau</Text>
             <View style={styles.niveauRow}>
               {TURN_ONDERDEEL_NIVEAUS.map((n) => (
@@ -707,6 +805,8 @@ export default function ToestelScreen() {
                 </Pressable>
               ))}
             </View>
+              </>
+            )}
 
             <View style={styles.modalActions}>
               <Pressable
@@ -819,6 +919,19 @@ const styles = StyleSheet.create({
     borderColor: "#3A2A55",
   },
   elementgroepTagText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#B090E0" },
+  dWaardeTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#1A4048",
+    borderWidth: 1,
+    borderColor: OEFENING_BORDER,
+  },
+  dWaardeTagText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+    color: OEFENING_COLOR,
+  },
   filterChipEg: { backgroundColor: "#252035", borderColor: "#3A2A55" },
   filterChipEgActive: { backgroundColor: "#6030A0", borderColor: "#6030A0" },
   filterChipEgTextActive: { color: Colors.white },
@@ -1010,6 +1123,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionBtnPressed: { opacity: 0.75 },
+  actionBtnDisabled: { opacity: 0.45 },
   actionBtnOefening: { backgroundColor: OEFENING_BADGE_BG, borderColor: OEFENING_BORDER },
   actionBtnGeleerd: { backgroundColor: "#3A2E14", borderColor: "#6A5020" },
   actionBtnNeutral: { backgroundColor: Colors.surfaceSecondary, borderColor: Colors.borderLight },

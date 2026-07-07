@@ -21,7 +21,9 @@ import {
   deleteSporter,
   updateSporterNiveau,
   getOnderdelen,
-  calculateDWaarde,
+  calculateOefeningDWaarde,
+  SPRONG_MAX_OEFENING_ONDERDELEN,
+  isSprongToestel,
   TOESTELLEN,
   NIVEAUS,
   getMinimumForNiveau,
@@ -164,12 +166,16 @@ export default function SporterScreen() {
         {TOESTELLEN.map((toestel) => {
           const selectedNamen = sporter.onderdelen[toestel] || [];
           const selected = selectedNamen.length;
-          const minimum = getMinimumForNiveau(sporter.niveau, toestel as Toestel);
-          const progress = Math.min(selected / minimum, 1);
-          const isComplete = selected >= minimum;
-          const allOnderdelen = onderdelenMap[toestel] || [];
           const oefeningNamen = sporter.oefening?.[toestel] || [];
-          const dWaarde = calculateDWaarde(oefeningNamen, allOnderdelen);
+          const isSprong = isSprongToestel(toestel);
+          const progressCount = isSprong ? oefeningNamen.length : selected;
+          const minimum = isSprong
+            ? SPRONG_MAX_OEFENING_ONDERDELEN
+            : getMinimumForNiveau(sporter.niveau, toestel as Toestel);
+          const progress = Math.min(progressCount / minimum, 1);
+          const isComplete = progressCount >= minimum;
+          const allOnderdelen = onderdelenMap[toestel] || [];
+          const dWaarde = calculateOefeningDWaarde(toestel, oefeningNamen, allOnderdelen);
 
           return (
             <Pressable
@@ -207,7 +213,7 @@ export default function SporterScreen() {
                   />
                 </View>
                 <Text style={styles.progressText}>
-                  {selected}/{minimum}
+                  {progressCount}/{minimum}
                 </Text>
                 <Ionicons
                   name="chevron-forward"

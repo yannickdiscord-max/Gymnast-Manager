@@ -24,13 +24,18 @@ import {
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
+  INVALID_SPRONG_DWAARDE,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   LESPLAN_ACTION_FORBIDDEN,
   type LesplanVisibility,
   ONDERDELEN_PER_TOESTEL,
+  SPRONG_MAX_OEFENING_ONDERDELEN,
   TOESTELLEN,
-  sortOnderdelen,
+  sortOnderdelenForToestel,
+  randomSprongDWaarde,
+  sprongDWaardeMissing,
+  isSprongToestel,
   type Toestel,
 } from "../shared/turnteam-domain";
 import {
@@ -183,32 +188,44 @@ export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> 
       .update(schema.onderdelenCatalog)
       .set({ data: parsed })
       .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
-  } else {
-    let dirty = false;
-    parsed[toestel] = parsed[toestel].map((o) => {
-      if (o.elementgroep == null) {
-        dirty = true;
-        const defaultEntry = ONDERDELEN_PER_TOESTEL[toestel].find(
-          (d) => d.naam === o.naam,
-        );
-        return { ...o, elementgroep: defaultEntry?.elementgroep ?? 1 };
-      }
-      return o;
-    });
-    if (dirty) {
-      await db
-        .update(schema.onderdelenCatalog)
-        .set({ data: parsed })
-        .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
-    }
   }
-  return sortOnderdelen(parsed[toestel]);
+
+  let dirty = false;
+  parsed[toestel] = (parsed[toestel] ?? []).map((o) => {
+    let next = o;
+    if (o.elementgroep == null) {
+      dirty = true;
+      const defaultEntry = ONDERDELEN_PER_TOESTEL[toestel].find(
+        (d) => d.naam === o.naam,
+      );
+      next = { ...next, elementgroep: defaultEntry?.elementgroep ?? 1 };
+    }
+    if (isSprongToestel(toestel) && sprongDWaardeMissing(next)) {
+      dirty = true;
+      next = { ...next, dWaarde: randomSprongDWaarde() };
+    }
+    return next;
+  });
+  if (dirty) {
+    await db
+      .update(schema.onderdelenCatalog)
+      .set({ data: parsed })
+      .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
+  }
+
+  return sortOnderdelenForToestel(toestel, parsed[toestel]);
 }
 
 export async function addOnderdeel(
   toestel: Toestel,
   onderdeel: TurnOnderdeel,
 ): Promise<void> {
+  if (isSprongToestel(toestel)) {
+    const dWaarde = onderdeel.dWaarde;
+    if (dWaarde == null || Number.isNaN(dWaarde) || dWaarde <= 0) {
+      throw new Error(INVALID_SPRONG_DWAARDE);
+    }
+  }
   await ensureOnderdelenCatalogRow();
   const rows = await db
     .select()
@@ -330,7 +347,11 @@ export async function updateSporterOefening(
 ): Promise<void> {
   const sp = await getSporter(id);
   if (!sp) return;
-  const oe = { ...(sp.oefening ?? {}), [toestel]: oefening };
+  const trimmed =
+    isSprongToestel(toestel) && oefening.length > SPRONG_MAX_OEFENING_ONDERDELEN
+      ? oefening.slice(0, SPRONG_MAX_OEFENING_ONDERDELEN)
+      : oefening;
+  const oe = { ...(sp.oefening ?? {}), [toestel]: trimmed };
   await db
     .update(schema.sporters)
     .set({ oefening: oe })

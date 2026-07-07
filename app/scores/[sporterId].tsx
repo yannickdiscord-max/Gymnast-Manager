@@ -24,7 +24,7 @@ import {
   deleteWedstrijd,
   getLastWedstrijdFromOtherSporters,
   getOnderdelen,
-  calculateDWaarde,
+  calculateOefeningDWaarde,
   TOESTELLEN,
   DUPLICATE_WEDSTRIJD_ERROR,
   type Sporter,
@@ -85,7 +85,7 @@ export default function ScoresScreen() {
         snapshot[t] = null;
       } else {
         const onderdelen = await getOnderdelen(t as Toestel);
-        snapshot[t] = calculateDWaarde(namen, onderdelen);
+        snapshot[t] = calculateOefeningDWaarde(t, namen, onderdelen);
       }
     }
     return snapshot;

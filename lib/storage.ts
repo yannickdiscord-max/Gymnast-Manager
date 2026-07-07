@@ -47,6 +47,7 @@ export {
   INVALID_AGENDA_DATUM,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
+  INVALID_SPRONG_DWAARDE,
   INVALID_TRAINING_SESSION_DATUM,
   NO_TRAINING_SESSIONS_TO_ARCHIVE,
   TRAINING_SESSION_NOT_FOUND,
@@ -56,10 +57,15 @@ export {
   NIVEAU_MINIMUM,
   NIVEAUS,
   ONDERDELEN_PER_TOESTEL,
+  SPRONG_MAX_OEFENING_ONDERDELEN,
   TURN_ONDERDEEL_NIVEAUS,
   TOESTELLEN,
   calculateDWaarde,
+  calculateOefeningDWaarde,
+  calculateSprongOefeningDWaarde,
   getMinimumForNiveau,
+  isSprongToestel,
+  parseSprongDWaardeInput,
   sortOnderdelen,
 } from "../shared/turnteam-domain";
 

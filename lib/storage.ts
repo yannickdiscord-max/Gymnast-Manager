@@ -61,7 +61,9 @@ export {
   TURN_ONDERDEEL_NIVEAUS,
   TOESTELLEN,
   calculateDWaarde,
+  calculateAfsprongBonus,
   calculateOefeningDWaarde,
+  isOnderdeelMarkedAfsprong,
   calculateSprongOefeningDWaarde,
   getMinimumForNiveau,
   isSprongToestel,
@@ -100,6 +102,17 @@ export async function deleteOnderdeel(
     `/api/onderdelen/${encodeURIComponent(toestel)}?naam=${encodeURIComponent(naam)}`,
     { method: "DELETE" },
   );
+}
+
+export async function updateOnderdeelAfsprong(
+  toestel: Toestel,
+  naam: string,
+  isAfsprong: boolean,
+): Promise<TurnOnderdeel> {
+  return apiFetch(`/api/onderdelen/${encodeURIComponent(toestel)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ naam, isAfsprong }),
+  });
 }
 
 export async function getSporters(): Promise<Sporter[]> {

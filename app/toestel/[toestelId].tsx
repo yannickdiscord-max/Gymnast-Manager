@@ -26,6 +26,7 @@ import {
   getOnderdelen,
   addOnderdeel,
   deleteOnderdeel,
+  updateOnderdeelAfsprong,
   TURN_ONDERDEEL_NIVEAUS,
   ELEMENTGROEPEN,
   ELEMENTGROEP_ROMAN,
@@ -67,6 +68,8 @@ export default function ToestelScreen() {
   const [newNiveau, setNewNiveau] = useState<TurnOnderdeelNiveau>("A");
   const [newElementgroep, setNewElementgroep] = useState<Elementgroep>(1);
   const [newDWaarde, setNewDWaarde] = useState("2.0");
+  const [newIsAfsprong, setNewIsAfsprong] = useState(false);
+  const [togglingAfsprong, setTogglingAfsprong] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -168,6 +171,19 @@ export default function ToestelScreen() {
     return without;
   }, [oefening, draggingNaam, draggingToIdx]);
 
+  const oefeningDWaarde = useMemo(
+    () => calculateOefeningDWaarde(toestel, oefening, onderdelen),
+    [toestel, oefening, onderdelen],
+  );
+
+  const listExtraData = useMemo(
+    () =>
+      `${oefening.join("\u0001")}|${oefeningDWaarde}|${onderdelen
+        .map((o) => `${o.naam}:${o.isAfsprong ? 1 : 0}:${o.dWaarde ?? ""}`)
+        .join("\u0001")}`,
+    [oefening, oefeningDWaarde, onderdelen],
+  );
+
   const handleOnderdeelPress = (item: TurnOnderdeel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActionItem(item);
@@ -264,6 +280,7 @@ export default function ToestelScreen() {
     setNewNiveau("A");
     setNewElementgroep(1);
     setNewDWaarde("2.0");
+    setNewIsAfsprong(false);
     setErrorMsg("");
     setAddModalVisible(true);
   };
@@ -299,6 +316,7 @@ export default function ToestelScreen() {
         naam: trimmed,
         niveau: newNiveau,
         elementgroep: newElementgroep,
+        isAfsprong: newIsAfsprong,
       };
     }
     setSaving(true);
@@ -331,6 +349,29 @@ export default function ToestelScreen() {
       });
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  const handleToggleAfsprong = async () => {
+    if (!actionItem || isSprong || togglingAfsprong) return;
+    const next = !actionItem.isAfsprong;
+    setTogglingAfsprong(true);
+    try {
+      const updated = await updateOnderdeelAfsprong(
+        toestel,
+        actionItem.naam,
+        next,
+      );
+      if (!updated) return;
+
+      const refreshed = await getOnderdelen(toestel);
+      setOnderdelen(refreshed);
+      setActionItem(
+        refreshed.find((o) => o.naam === updated.naam) ?? updated,
+      );
+      Haptics.selectionAsync();
+    } finally {
+      setTogglingAfsprong(false);
+    }
   };
 
   const handleDeletePress = (naam: string) => {
@@ -453,8 +494,6 @@ export default function ToestelScreen() {
     );
   };
 
-  const oefeningDWaarde = calculateOefeningDWaarde(toestel, oefening, onderdelen);
-
   const OefeningSection = oefening.length > 0 ? (
     <View style={styles.oefeningSection}>
       <View style={styles.oefeningSectionHeader}>
@@ -530,6 +569,7 @@ export default function ToestelScreen() {
         data={displayOnderdelen}
         keyExtractor={(item) => item.naam}
         renderItem={renderOnderdeel}
+        extraData={listExtraData}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + webBottomInset + 20 },
@@ -663,6 +703,44 @@ export default function ToestelScreen() {
                   </Text>
                 </View>
               </View>
+
+              {!isSprong && (
+                <View style={styles.statusRow}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.statusBadge,
+                      actionItem.isAfsprong && styles.statusBadgeAfsprong,
+                      pressed && styles.statusBadgePressed,
+                      togglingAfsprong && styles.statusBadgeDisabled,
+                    ]}
+                    onPress={() => void handleToggleAfsprong()}
+                    disabled={togglingAfsprong}
+                    testID="toggle-afsprong-btn"
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      actionItem.isAfsprong
+                        ? "Afsprong uitzetten"
+                        : "Afsprong aanzetten"
+                    }
+                  >
+                    <Ionicons
+                      name={actionItem.isAfsprong ? "exit-outline" : "remove-outline"}
+                      size={14}
+                      color={actionItem.isAfsprong ? "#7DD3FC" : Colors.textTertiary}
+                    />
+                    <Text
+                      style={[
+                        styles.statusText,
+                        actionItem.isAfsprong
+                          ? styles.statusTextAfsprong
+                          : styles.statusTextAfsprongStrikethrough,
+                      ]}
+                    >
+                      Afsprong
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
 
               <View style={styles.actionButtons}>
                 {!isInOefening && (
@@ -805,6 +883,19 @@ export default function ToestelScreen() {
                 </Pressable>
               ))}
             </View>
+
+            <Pressable
+              style={styles.afsprongToggle}
+              onPress={() => setNewIsAfsprong((v) => !v)}
+              testID="select-afsprong"
+            >
+              <Ionicons
+                name={newIsAfsprong ? "checkbox" : "square-outline"}
+                size={22}
+                color={newIsAfsprong ? Colors.primary : Colors.textTertiary}
+              />
+              <Text style={styles.afsprongToggleText}>Kan afsprong zijn</Text>
+            </Pressable>
               </>
             )}
 
@@ -1109,9 +1200,29 @@ const styles = StyleSheet.create({
   },
   statusBadgeGeleerd: { backgroundColor: "#3A2E14", borderColor: "#6A5020" },
   statusBadgeOefening: { backgroundColor: OEFENING_BADGE_BG, borderColor: OEFENING_BORDER },
+  statusBadgeAfsprong: { backgroundColor: "#1A3040", borderColor: "#285060" },
+  statusBadgePressed: { opacity: 0.8 },
+  statusBadgeDisabled: { opacity: 0.5 },
   statusText: { fontSize: 13, fontFamily: "Inter_500Medium", color: Colors.textTertiary },
   statusTextGeleerd: { color: Colors.primary },
   statusTextOefening: { color: OEFENING_COLOR },
+  statusTextAfsprong: { color: "#7DD3FC" },
+  statusTextAfsprongStrikethrough: {
+    color: Colors.textTertiary,
+    textDecorationLine: "line-through",
+  },
+  afsprongToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 16,
+    paddingVertical: 4,
+  },
+  afsprongToggleText: {
+    fontSize: 15,
+    fontFamily: "Inter_400Regular",
+    color: Colors.text,
+  },
   actionButtons: { gap: 10, marginBottom: 8 },
   actionBtn: {
     flexDirection: "row",

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -42,6 +42,7 @@ export default function SporterScreen() {
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const hasLoadedRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -51,7 +52,7 @@ export default function SporterScreen() {
 
   const loadSporter = async () => {
     if (!id) return;
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     const [data, ...onderdelenResults] = await Promise.all([
       getSporter(id),
       ...TOESTELLEN.map((t) => getOnderdelen(t as Toestel)),
@@ -62,6 +63,7 @@ export default function SporterScreen() {
       map[t] = onderdelenResults[i] as TurnOnderdeel[];
     });
     setOnderdelenMap(map);
+    hasLoadedRef.current = true;
     setLoading(false);
   };
 

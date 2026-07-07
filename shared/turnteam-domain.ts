@@ -17,6 +17,8 @@ export interface TurnOnderdeel {
   elementgroep: 1 | 2 | 3 | 4;
   /** Vaste D-waarde per onderdeel (alleen Sprong). */
   dWaarde?: number;
+  /** Onderdeel kan als afsprong dienen (niet bij Sprong). */
+  isAfsprong?: boolean;
 }
 
 export const TURN_ONDERDEEL_NIVEAUS = ["tA", "A", "B", "C", "D", "E"] as const;
@@ -364,13 +366,47 @@ export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
   E: 0.5,
 };
 
+export const ELEMENTGROEP_BONUS = 0.5;
+export const AFSPRONG_BONUS = 0.5;
+
+export function isOnderdeelMarkedAfsprong(
+  onderdeel: TurnOnderdeel | undefined,
+): boolean {
+  return onderdeel?.isAfsprong === true;
+}
+
+function resolveOefeningItems(
+  selectedNamen: string[],
+  allOnderdelen: TurnOnderdeel[],
+): TurnOnderdeel[] {
+  return selectedNamen
+    .map((naam) => allOnderdelen.find((o) => o.naam === naam))
+    .filter((o): o is TurnOnderdeel => o !== undefined);
+}
+
+/** +0.5 als laatste onderdeel een afsprong is én een eerder onderdeel dezelfde elementgroep heeft. */
+export function calculateAfsprongBonus(
+  selectedNamen: string[],
+  allOnderdelen: TurnOnderdeel[],
+): number {
+  if (selectedNamen.length === 0) return 0;
+  const lastNaam = selectedNamen[selectedNamen.length - 1];
+  const lastItem = allOnderdelen.find((o) => o.naam === lastNaam);
+  if (!lastItem || !isOnderdeelMarkedAfsprong(lastItem)) return 0;
+
+  const lastEg = lastItem.elementgroep ?? 1;
+  const hasEarlierSameEg = selectedNamen.slice(0, -1).some((naam) => {
+    const item = allOnderdelen.find((o) => o.naam === naam);
+    return item != null && (item.elementgroep ?? 1) === lastEg;
+  });
+  return hasEarlierSameEg ? AFSPRONG_BONUS : 0;
+}
+
 export function calculateDWaarde(
   selectedNamen: string[],
   allOnderdelen: TurnOnderdeel[],
 ): number {
-  const oefeningItems = selectedNamen
-    .map((naam) => allOnderdelen.find((o) => o.naam === naam))
-    .filter((o): o is TurnOnderdeel => o !== undefined);
+  const oefeningItems = resolveOefeningItems(selectedNamen, allOnderdelen);
 
   const niveauScore = oefeningItems.reduce(
     (sum, o) => sum + (DWAARDE_PER_NIVEAU[o.niveau] ?? 0),
@@ -378,9 +414,10 @@ export function calculateDWaarde(
   );
 
   const presentGroepen = new Set(oefeningItems.map((o) => o.elementgroep ?? 1));
-  const elementgroepBonus = presentGroepen.size * 0.5;
+  const elementgroepBonus = presentGroepen.size * ELEMENTGROEP_BONUS;
+  const afsprongBonus = calculateAfsprongBonus(selectedNamen, allOnderdelen);
 
-  return niveauScore + elementgroepBonus;
+  return niveauScore + elementgroepBonus + afsprongBonus;
 }
 
 export function calculateSprongOefeningDWaarde(

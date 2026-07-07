@@ -204,6 +204,10 @@ export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> 
       dirty = true;
       next = { ...next, dWaarde: randomSprongDWaarde() };
     }
+    if (!isSprongToestel(toestel) && next.isAfsprong == null) {
+      dirty = true;
+      next = { ...next, isAfsprong: false };
+    }
     return next;
   });
   if (dirty) {
@@ -262,6 +266,33 @@ export async function deleteOnderdeel(
     .update(schema.onderdelenCatalog)
     .set({ data: parsed })
     .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
+}
+
+export async function updateOnderdeelAfsprong(
+  toestel: Toestel,
+  naam: string,
+  isAfsprong: boolean,
+): Promise<TurnOnderdeel | undefined> {
+  if (isSprongToestel(toestel)) return undefined;
+  await ensureOnderdelenCatalogRow();
+  const rows = await db
+    .select()
+    .from(schema.onderdelenCatalog)
+    .where(eq(schema.onderdelenCatalog.id, CATALOG_ID))
+    .limit(1);
+  if (!rows[0]) return undefined;
+  const parsed = (rows[0].data as Record<string, TurnOnderdeel[]>) ?? {};
+  const list = parsed[toestel] ?? [];
+  const idx = list.findIndex((o) => o.naam === naam);
+  if (idx < 0) return undefined;
+  const updated: TurnOnderdeel = { ...list[idx], isAfsprong };
+  list[idx] = updated;
+  parsed[toestel] = list;
+  await db
+    .update(schema.onderdelenCatalog)
+    .set({ data: parsed })
+    .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
+  return updated;
 }
 
 export async function addSporter(

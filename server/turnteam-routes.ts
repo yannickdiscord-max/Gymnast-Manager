@@ -185,6 +185,31 @@ export function registerTurnteamRoutes(app: Express): void {
     }),
   );
 
+  api.patch(
+    "/onderdelen/:toestel",
+    asyncHandler(async (req, res) => {
+      const naam = String(req.body?.naam ?? "").trim();
+      if (!naam) {
+        badRequest(res, "naam is required");
+        return;
+      }
+      if (typeof req.body?.isAfsprong !== "boolean") {
+        badRequest(res, "isAfsprong boolean is required");
+        return;
+      }
+      const updated = await svc.updateOnderdeelAfsprong(
+        pid(req, "toestel") as Toestel,
+        naam,
+        req.body.isAfsprong,
+      );
+      if (!updated) {
+        res.status(404).json({ error: "onderdeel not found" });
+        return;
+      }
+      res.json(updated);
+    }),
+  );
+
   api.get(
     "/blessures/:sporterId",
     asyncHandler(async (req, res) => {

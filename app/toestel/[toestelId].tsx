@@ -14,6 +14,8 @@ import {
   Alert,
   Animated,
   Linking,
+  Dimensions,
+  Easing,
 } from "react-native";
 import { ScrollView } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -53,6 +55,7 @@ const OEFENING_BORDER = "#285060";
 const OEFENING_COLOR = "#3DD8BA";
 const OEFENING_BADGE_BG = "#1A4048";
 const ACTION_SHEET_UITLEG_HEIGHT = 168;
+const ACTION_SHEET_DISMISS_THRESHOLD = 72;
 
 export default function ToestelScreen() {
   const { toestelId, sporterId } = useLocalSearchParams<{
@@ -96,10 +99,62 @@ export default function ToestelScreen() {
   const [draggingNaam, setDraggingNaam] = useState<string | null>(null);
   const [draggingToIdx, setDraggingToIdx] = useState<number | null>(null);
   const actionSheetExpandAnim = useRef(new Animated.Value(0)).current;
+  const actionSheetTranslateY = useRef(new Animated.Value(0)).current;
+  const expandDragRef = useRef(0);
+  const expandStartDragRef = useRef(0);
+  const dismissDragRef = useRef(0);
+  const dismissStartDragRef = useRef(0);
+  const setActionSheetExpandedStateRef = useRef<(expanded: boolean) => void>(() => {});
+  const closeActionSheetRef = useRef<(fromY: number) => void>(() => {});
+
+  const closeActionSheet = useCallback(() => {
+    setActionItem(null);
+  }, []);
+
+  const dismissActionSheetAnimated = useCallback((fromY: number) => {
+    const y = Math.max(0, fromY);
+    actionSheetExpandAnim.stopAnimation();
+    actionSheetExpandAnim.setValue(expandDragRef.current);
+    actionSheetTranslateY.stopAnimation();
+    actionSheetTranslateY.setValue(y);
+
+    const screenH = Dimensions.get("window").height;
+    if (y >= screenH * 0.35) {
+      closeActionSheet();
+      return;
+    }
+
+    Animated.timing(actionSheetTranslateY, {
+      toValue: screenH,
+      duration: Math.max(120, Math.round(220 * ((screenH - y) / screenH))),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) closeActionSheet();
+    });
+  }, [actionSheetExpandAnim, actionSheetTranslateY, closeActionSheet]);
+
+  const snapActionSheetBack = useCallback((fromY: number) => {
+    const y = Math.max(0, fromY);
+    actionSheetTranslateY.stopAnimation();
+    actionSheetTranslateY.setValue(y);
+    Animated.spring(actionSheetTranslateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 70,
+    }).start();
+  }, [actionSheetTranslateY]);
+
+  useEffect(() => {
+    closeActionSheetRef.current = dismissActionSheetAnimated;
+  }, [dismissActionSheetAnimated]);
 
   useEffect(() => {
     if (!actionItem) {
       actionSheetExpandAnim.setValue(0);
+      actionSheetTranslateY.setValue(0);
+      expandDragRef.current = 0;
+      dismissDragRef.current = 0;
       setYoutubeUrlInput("");
       setYoutubeError("");
       return;
@@ -107,38 +162,175 @@ export default function ToestelScreen() {
     setYoutubeUrlInput(actionItem.youtubeUrl ?? "");
     setYoutubeError("");
     actionSheetExpandAnim.setValue(0);
-  }, [actionItem, actionSheetExpandAnim]);
+    actionSheetTranslateY.setValue(0);
+    expandDragRef.current = 0;
+    dismissDragRef.current = 0;
+  }, [actionItem, actionSheetExpandAnim, actionSheetTranslateY]);
 
   const setActionSheetExpandedState = useCallback(
     (expanded: boolean) => {
-      Animated.spring(actionSheetExpandAnim, {
-        toValue: expanded ? 1 : 0,
+      const target = expanded ? 1 : 0;
+      const current = expandDragRef.current;
+      actionSheetExpandAnim.stopAnimation();
+      actionSheetExpandAnim.setValue(current);
+      if (Math.abs(current - target) < 0.01) {
+        actionSheetExpandAnim.setValue(target);
+        expandDragRef.current = target;
+        return;
+      }
+      Animated.timing(actionSheetExpandAnim, {
+        toValue: target,
+        duration: 160,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: false,
-        friction: 9,
-        tension: 70,
-      }).start();
+      }).start(({ finished }) => {
+        if (finished) {
+          expandDragRef.current = target;
+        }
+      });
     },
     [actionSheetExpandAnim],
   );
 
-  const actionSheetPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dy) > 4,
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dy < -28) {
-          setActionSheetExpandedState(true);
-        } else if (gesture.dy > 28) {
-          setActionSheetExpandedState(false);
-        } else if (gesture.dy < 0) {
-          setActionSheetExpandedState(true);
+  const settleActionSheetExpand = useCallback((gesture: { dy: number; vy: number }, translate: number) => {
+    let target = expandDragRef.current >= 0.5 ? 1 : 0;
+    if (gesture.vy < -0.25) target = 1;
+    if (gesture.vy > 0.25 && translate === 0) target = 0;
+    if (gesture.dy < -8) target = 1;
+    if (gesture.dy > 8 && translate === 0) target = 0;
+
+    const current = expandDragRef.current;
+    const wasCollapsingUitleg =
+      expandStartDragRef.current > 0.05 &&
+      current < expandStartDragRef.current - 0.05;
+
+    actionSheetExpandAnim.stopAnimation();
+
+    if (wasCollapsingUitleg && target === 0) {
+      actionSheetExpandAnim.setValue(0);
+      expandDragRef.current = 0;
+      return;
+    }
+
+    actionSheetExpandAnim.setValue(current);
+    if (Math.abs(current - target) < 0.01) {
+      actionSheetExpandAnim.setValue(target);
+      expandDragRef.current = target;
+      return;
+    }
+    Animated.timing(actionSheetExpandAnim, {
+      toValue: target,
+      duration: 140,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        expandDragRef.current = target;
+      }
+    });
+  }, [actionSheetExpandAnim]);
+
+  useEffect(() => {
+    setActionSheetExpandedStateRef.current = setActionSheetExpandedState;
+  }, [setActionSheetExpandedState]);
+
+  const snapActionSheetBackRef = useRef<(fromY: number) => void>(() => {});
+  const settleActionSheetExpandRef = useRef<
+    (gesture: { dy: number; vy: number }, translate: number) => void
+  >(() => {});
+  const handleActionSheetGrantRef = useRef<() => void>(() => {});
+  const handleActionSheetMoveRef = useRef<(gesture: { dy: number }) => void>(() => {});
+  const handleActionSheetReleaseRef = useRef<
+    (gesture: { dy: number; vy: number }) => void
+  >(() => {});
+
+  useEffect(() => {
+    snapActionSheetBackRef.current = snapActionSheetBack;
+  }, [snapActionSheetBack]);
+
+  useEffect(() => {
+    settleActionSheetExpandRef.current = settleActionSheetExpand;
+  }, [settleActionSheetExpand]);
+
+  useEffect(() => {
+    handleActionSheetGrantRef.current = () => {
+      actionSheetExpandAnim.stopAnimation();
+      actionSheetTranslateY.stopAnimation();
+      expandStartDragRef.current = expandDragRef.current;
+      dismissStartDragRef.current = dismissDragRef.current;
+    };
+
+    handleActionSheetMoveRef.current = (gesture) => {
+      const expand = Math.max(
+        0,
+        Math.min(
+          1,
+          expandStartDragRef.current - gesture.dy / ACTION_SHEET_UITLEG_HEIGHT,
+        ),
+      );
+      const collapseConsumed =
+        (expandStartDragRef.current - expand) * ACTION_SHEET_UITLEG_HEIGHT;
+      const translate = Math.max(
+        0,
+        dismissStartDragRef.current + gesture.dy - collapseConsumed,
+      );
+
+      expandDragRef.current = expand;
+      dismissDragRef.current = translate;
+      actionSheetExpandAnim.setValue(expand);
+      actionSheetTranslateY.setValue(translate);
+    };
+
+    handleActionSheetReleaseRef.current = (gesture) => {
+      const translate = dismissDragRef.current;
+      const shouldDismiss =
+        translate >= ACTION_SHEET_DISMISS_THRESHOLD ||
+        gesture.vy > 0.75 ||
+        gesture.dy >=
+          ACTION_SHEET_DISMISS_THRESHOLD +
+          expandStartDragRef.current * ACTION_SHEET_UITLEG_HEIGHT;
+
+      if (shouldDismiss) {
+        closeActionSheetRef.current(translate);
+        return;
+      }
+
+      const wasCollapsingUitleg =
+        expandStartDragRef.current > 0.05 &&
+        expandDragRef.current < expandStartDragRef.current - 0.05;
+
+      if (translate > 0) {
+        if (wasCollapsingUitleg) {
+          actionSheetTranslateY.stopAnimation();
+          actionSheetTranslateY.setValue(0);
+          dismissDragRef.current = 0;
         } else {
-          setActionSheetExpandedState(false);
+          snapActionSheetBackRef.current(translate);
         }
-      },
-    }),
-  ).current;
+      }
+
+      settleActionSheetExpandRef.current(gesture, translate);
+    };
+  }, [
+    actionSheetExpandAnim,
+    actionSheetTranslateY,
+    snapActionSheetBack,
+    settleActionSheetExpand,
+  ]);
+
+  const actionSheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => handleActionSheetGrantRef.current(),
+        onPanResponderMove: (_, gesture) =>
+          handleActionSheetMoveRef.current(gesture),
+        onPanResponderRelease: (_, gesture) =>
+          handleActionSheetReleaseRef.current(gesture),
+      }),
+    [],
+  );
 
   const uitlegSectionHeight = actionSheetExpandAnim.interpolate({
     inputRange: [0, 1],
@@ -757,11 +949,20 @@ export default function ToestelScreen() {
       <Modal
         visible={actionItem !== null}
         transparent
-        animationType="slide"
-        onRequestClose={() => setActionItem(null)}
+        animationType="none"
+        onRequestClose={() => closeActionSheet()}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setActionItem(null)} />
-        <View style={[styles.actionSheet, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
+        <Pressable style={styles.modalBackdrop} onPress={() => closeActionSheet()} />
+        <View style={styles.actionSheetOuter}>
+          <Animated.View
+            style={{ transform: [{ translateY: actionSheetTranslateY }] }}
+          >
+            <View
+              style={[
+                styles.actionSheet,
+                { paddingBottom: insets.bottom + webBottomInset + 16 },
+              ]}
+            >
           <View style={styles.handleHitArea} {...actionSheetPanResponder.panHandlers}>
             <View
               style={[
@@ -912,9 +1113,10 @@ export default function ToestelScreen() {
               </View>
 
               <Animated.View
-                style={[styles.uitlegSection, { height: uitlegSectionHeight }]}
+                style={[styles.uitlegSectionClip, { height: uitlegSectionHeight }]}
               >
-                <Text style={styles.fieldLabel}>YouTube-uitleg</Text>
+                <View style={styles.uitlegSection}>
+                <Text style={styles.fieldLabel}>Uitleg</Text>
                 <TextInput
                   style={styles.textInput}
                   value={youtubeUrlInput}
@@ -963,9 +1165,12 @@ export default function ToestelScreen() {
                     )}
                   </Pressable>
                 </View>
+                </View>
               </Animated.View>
             </>
           )}
+            </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1279,11 +1484,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
   },
-  actionSheet: {
+  actionSheetOuter: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  actionSheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -1303,11 +1510,16 @@ const styles = StyleSheet.create({
   handleHitArea: {
     alignSelf: "stretch",
     alignItems: "center",
-    paddingVertical: 10,
-    marginBottom: 10,
+    justifyContent: "center",
+    paddingVertical: 20,
+    marginBottom: 6,
+    minHeight: 52,
+  },
+  uitlegSectionClip: {
+    overflow: "hidden",
   },
   uitlegSection: {
-    overflow: "hidden",
+    height: ACTION_SHEET_UITLEG_HEIGHT,
     borderTopWidth: 1,
     borderTopColor: Colors.borderLight,
     marginTop: 4,

@@ -12,6 +12,10 @@ import {
   KeyboardAvoidingView,
   PanResponder,
   Alert,
+  Animated,
+  Linking,
+  Dimensions,
+  Easing,
 } from "react-native";
 import { ScrollView } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -27,6 +31,10 @@ import {
   addOnderdeel,
   deleteOnderdeel,
   updateOnderdeelAfsprong,
+  updateOnderdeelYoutubeUrl,
+  hasOnderdeelYoutubeUrl,
+  isValidYoutubeUrl,
+  INVALID_YOUTUBE_URL,
   TURN_ONDERDEEL_NIVEAUS,
   ELEMENTGROEPEN,
   ELEMENTGROEP_ROMAN,
@@ -46,6 +54,8 @@ const OEFENING_BG = "#1C3035";
 const OEFENING_BORDER = "#285060";
 const OEFENING_COLOR = "#3DD8BA";
 const OEFENING_BADGE_BG = "#1A4048";
+const ACTION_SHEET_UITLEG_HEIGHT = 168;
+const ACTION_SHEET_DISMISS_THRESHOLD = 72;
 
 export default function ToestelScreen() {
   const { toestelId, sporterId } = useLocalSearchParams<{
@@ -70,6 +80,9 @@ export default function ToestelScreen() {
   const [newDWaarde, setNewDWaarde] = useState("2.0");
   const [newIsAfsprong, setNewIsAfsprong] = useState(false);
   const [togglingAfsprong, setTogglingAfsprong] = useState(false);
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState("");
+  const [savingYoutube, setSavingYoutube] = useState(false);
+  const [youtubeError, setYoutubeError] = useState("");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -85,6 +98,244 @@ export default function ToestelScreen() {
   const containerRef = useRef<View>(null);
   const [draggingNaam, setDraggingNaam] = useState<string | null>(null);
   const [draggingToIdx, setDraggingToIdx] = useState<number | null>(null);
+  const actionSheetExpandAnim = useRef(new Animated.Value(0)).current;
+  const actionSheetTranslateY = useRef(new Animated.Value(0)).current;
+  const expandDragRef = useRef(0);
+  const expandStartDragRef = useRef(0);
+  const dismissDragRef = useRef(0);
+  const dismissStartDragRef = useRef(0);
+  const setActionSheetExpandedStateRef = useRef<(expanded: boolean) => void>(() => {});
+  const closeActionSheetRef = useRef<(fromY: number) => void>(() => {});
+
+  const closeActionSheet = useCallback(() => {
+    setActionItem(null);
+  }, []);
+
+  const dismissActionSheetAnimated = useCallback((fromY: number) => {
+    const y = Math.max(0, fromY);
+    actionSheetExpandAnim.stopAnimation();
+    actionSheetExpandAnim.setValue(expandDragRef.current);
+    actionSheetTranslateY.stopAnimation();
+    actionSheetTranslateY.setValue(y);
+
+    const screenH = Dimensions.get("window").height;
+    if (y >= screenH * 0.35) {
+      closeActionSheet();
+      return;
+    }
+
+    Animated.timing(actionSheetTranslateY, {
+      toValue: screenH,
+      duration: Math.max(120, Math.round(220 * ((screenH - y) / screenH))),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) closeActionSheet();
+    });
+  }, [actionSheetExpandAnim, actionSheetTranslateY, closeActionSheet]);
+
+  const snapActionSheetBack = useCallback((fromY: number) => {
+    const y = Math.max(0, fromY);
+    actionSheetTranslateY.stopAnimation();
+    actionSheetTranslateY.setValue(y);
+    Animated.spring(actionSheetTranslateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 70,
+    }).start();
+  }, [actionSheetTranslateY]);
+
+  useEffect(() => {
+    closeActionSheetRef.current = dismissActionSheetAnimated;
+  }, [dismissActionSheetAnimated]);
+
+  useEffect(() => {
+    if (!actionItem) {
+      actionSheetExpandAnim.setValue(0);
+      actionSheetTranslateY.setValue(0);
+      expandDragRef.current = 0;
+      dismissDragRef.current = 0;
+      setYoutubeUrlInput("");
+      setYoutubeError("");
+      return;
+    }
+    setYoutubeUrlInput(actionItem.youtubeUrl ?? "");
+    setYoutubeError("");
+    actionSheetExpandAnim.setValue(0);
+    actionSheetTranslateY.setValue(0);
+    expandDragRef.current = 0;
+    dismissDragRef.current = 0;
+  }, [actionItem, actionSheetExpandAnim, actionSheetTranslateY]);
+
+  const setActionSheetExpandedState = useCallback(
+    (expanded: boolean) => {
+      const target = expanded ? 1 : 0;
+      const current = expandDragRef.current;
+      actionSheetExpandAnim.stopAnimation();
+      actionSheetExpandAnim.setValue(current);
+      if (Math.abs(current - target) < 0.01) {
+        actionSheetExpandAnim.setValue(target);
+        expandDragRef.current = target;
+        return;
+      }
+      Animated.timing(actionSheetExpandAnim, {
+        toValue: target,
+        duration: 160,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished) {
+          expandDragRef.current = target;
+        }
+      });
+    },
+    [actionSheetExpandAnim],
+  );
+
+  const settleActionSheetExpand = useCallback((gesture: { dy: number; vy: number }, translate: number) => {
+    let target = expandDragRef.current >= 0.5 ? 1 : 0;
+    if (gesture.vy < -0.25) target = 1;
+    if (gesture.vy > 0.25 && translate === 0) target = 0;
+    if (gesture.dy < -8) target = 1;
+    if (gesture.dy > 8 && translate === 0) target = 0;
+
+    const current = expandDragRef.current;
+    const wasCollapsingUitleg =
+      expandStartDragRef.current > 0.05 &&
+      current < expandStartDragRef.current - 0.05;
+
+    actionSheetExpandAnim.stopAnimation();
+
+    if (wasCollapsingUitleg && target === 0) {
+      actionSheetExpandAnim.setValue(0);
+      expandDragRef.current = 0;
+      return;
+    }
+
+    actionSheetExpandAnim.setValue(current);
+    if (Math.abs(current - target) < 0.01) {
+      actionSheetExpandAnim.setValue(target);
+      expandDragRef.current = target;
+      return;
+    }
+    Animated.timing(actionSheetExpandAnim, {
+      toValue: target,
+      duration: 140,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        expandDragRef.current = target;
+      }
+    });
+  }, [actionSheetExpandAnim]);
+
+  useEffect(() => {
+    setActionSheetExpandedStateRef.current = setActionSheetExpandedState;
+  }, [setActionSheetExpandedState]);
+
+  const snapActionSheetBackRef = useRef<(fromY: number) => void>(() => {});
+  const settleActionSheetExpandRef = useRef<
+    (gesture: { dy: number; vy: number }, translate: number) => void
+  >(() => {});
+  const handleActionSheetGrantRef = useRef<() => void>(() => {});
+  const handleActionSheetMoveRef = useRef<(gesture: { dy: number }) => void>(() => {});
+  const handleActionSheetReleaseRef = useRef<
+    (gesture: { dy: number; vy: number }) => void
+  >(() => {});
+
+  useEffect(() => {
+    snapActionSheetBackRef.current = snapActionSheetBack;
+  }, [snapActionSheetBack]);
+
+  useEffect(() => {
+    settleActionSheetExpandRef.current = settleActionSheetExpand;
+  }, [settleActionSheetExpand]);
+
+  useEffect(() => {
+    handleActionSheetGrantRef.current = () => {
+      actionSheetExpandAnim.stopAnimation();
+      actionSheetTranslateY.stopAnimation();
+      expandStartDragRef.current = expandDragRef.current;
+      dismissStartDragRef.current = dismissDragRef.current;
+    };
+
+    handleActionSheetMoveRef.current = (gesture) => {
+      const expand = Math.max(
+        0,
+        Math.min(
+          1,
+          expandStartDragRef.current - gesture.dy / ACTION_SHEET_UITLEG_HEIGHT,
+        ),
+      );
+      const collapseConsumed =
+        (expandStartDragRef.current - expand) * ACTION_SHEET_UITLEG_HEIGHT;
+      const translate = Math.max(
+        0,
+        dismissStartDragRef.current + gesture.dy - collapseConsumed,
+      );
+
+      expandDragRef.current = expand;
+      dismissDragRef.current = translate;
+      actionSheetExpandAnim.setValue(expand);
+      actionSheetTranslateY.setValue(translate);
+    };
+
+    handleActionSheetReleaseRef.current = (gesture) => {
+      const translate = dismissDragRef.current;
+      const shouldDismiss =
+        translate >= ACTION_SHEET_DISMISS_THRESHOLD ||
+        gesture.vy > 0.75 ||
+        gesture.dy >=
+          ACTION_SHEET_DISMISS_THRESHOLD +
+          expandStartDragRef.current * ACTION_SHEET_UITLEG_HEIGHT;
+
+      if (shouldDismiss) {
+        closeActionSheetRef.current(translate);
+        return;
+      }
+
+      const wasCollapsingUitleg =
+        expandStartDragRef.current > 0.05 &&
+        expandDragRef.current < expandStartDragRef.current - 0.05;
+
+      if (translate > 0) {
+        if (wasCollapsingUitleg) {
+          actionSheetTranslateY.stopAnimation();
+          actionSheetTranslateY.setValue(0);
+          dismissDragRef.current = 0;
+        } else {
+          snapActionSheetBackRef.current(translate);
+        }
+      }
+
+      settleActionSheetExpandRef.current(gesture, translate);
+    };
+  }, [
+    actionSheetExpandAnim,
+    actionSheetTranslateY,
+    snapActionSheetBack,
+    settleActionSheetExpand,
+  ]);
+
+  const actionSheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => handleActionSheetGrantRef.current(),
+        onPanResponderMove: (_, gesture) =>
+          handleActionSheetMoveRef.current(gesture),
+        onPanResponderRelease: (_, gesture) =>
+          handleActionSheetReleaseRef.current(gesture),
+      }),
+    [],
+  );
+
+  const uitlegSectionHeight = actionSheetExpandAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, ACTION_SHEET_UITLEG_HEIGHT],
+  });
 
   useEffect(() => {
     oefeningRef.current = oefening;
@@ -179,7 +430,7 @@ export default function ToestelScreen() {
   const listExtraData = useMemo(
     () =>
       `${oefening.join("\u0001")}|${oefeningDWaarde}|${onderdelen
-        .map((o) => `${o.naam}:${o.isAfsprong ? 1 : 0}:${o.dWaarde ?? ""}`)
+        .map((o) => `${o.naam}:${o.isAfsprong ? 1 : 0}:${o.dWaarde ?? ""}:${o.youtubeUrl ?? ""}`)
         .join("\u0001")}`,
     [oefening, oefeningDWaarde, onderdelen],
   );
@@ -187,6 +438,49 @@ export default function ToestelScreen() {
   const handleOnderdeelPress = (item: TurnOnderdeel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActionItem(item);
+  };
+
+  const handleSaveYoutubeUrl = async () => {
+    if (!actionItem || savingYoutube) return;
+    const trimmed = youtubeUrlInput.trim();
+    if (trimmed && !isValidYoutubeUrl(trimmed)) {
+      setYoutubeError("Gebruik een geldige YouTube-link.");
+      return;
+    }
+    setSavingYoutube(true);
+    setYoutubeError("");
+    try {
+      const updated = await updateOnderdeelYoutubeUrl(
+        toestel,
+        actionItem.naam,
+        trimmed,
+      );
+      const refreshed = await getOnderdelen(toestel);
+      setOnderdelen(refreshed);
+      const merged =
+        refreshed.find((o) => o.naam === updated.naam) ?? updated;
+      setActionItem(merged);
+      setYoutubeUrlInput(merged.youtubeUrl ?? "");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      if (e instanceof Error && e.message === INVALID_YOUTUBE_URL) {
+        setYoutubeError("Gebruik een geldige YouTube-link.");
+      } else {
+        setYoutubeError("Opslaan mislukt.");
+      }
+    } finally {
+      setSavingYoutube(false);
+    }
+  };
+
+  const handleOpenYoutube = async () => {
+    const url = actionItem?.youtubeUrl?.trim();
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Fout", "Kon de video niet openen.");
+    }
   };
 
   const handleSetGeleerd = async (naam: string) => {
@@ -655,12 +949,28 @@ export default function ToestelScreen() {
       <Modal
         visible={actionItem !== null}
         transparent
-        animationType="slide"
-        onRequestClose={() => setActionItem(null)}
+        animationType="none"
+        onRequestClose={() => closeActionSheet()}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setActionItem(null)} />
-        <View style={[styles.actionSheet, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
-          <View style={styles.modalHandle} />
+        <Pressable style={styles.modalBackdrop} onPress={() => closeActionSheet()} />
+        <View style={styles.actionSheetOuter}>
+          <Animated.View
+            style={{ transform: [{ translateY: actionSheetTranslateY }] }}
+          >
+            <View
+              style={[
+                styles.actionSheet,
+                { paddingBottom: insets.bottom + webBottomInset + 16 },
+              ]}
+            >
+          <View style={styles.handleHitArea} {...actionSheetPanResponder.panHandlers}>
+            <View
+              style={[
+                styles.modalHandle,
+                hasOnderdeelYoutubeUrl(actionItem ?? undefined) && styles.modalHandleWithVideo,
+              ]}
+            />
+          </View>
           {actionItem && (
             <>
               <View style={styles.actionHeader}>
@@ -801,8 +1111,66 @@ export default function ToestelScreen() {
                   </Pressable>
                 )}
               </View>
+
+              <Animated.View
+                style={[styles.uitlegSectionClip, { height: uitlegSectionHeight }]}
+              >
+                <View style={styles.uitlegSection}>
+                <Text style={styles.fieldLabel}>Uitleg</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={youtubeUrlInput}
+                  onChangeText={(t) => {
+                    setYoutubeUrlInput(t);
+                    setYoutubeError("");
+                  }}
+                  placeholder="https://youtube.com/watch?v=..."
+                  placeholderTextColor={Colors.textTertiary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  testID="youtube-url-input"
+                />
+                {!!youtubeError && (
+                  <Text style={styles.errorText}>{youtubeError}</Text>
+                )}
+                <View style={styles.uitlegActions}>
+                  {hasOnderdeelYoutubeUrl(actionItem) && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.uitlegOpenBtn,
+                        pressed && styles.actionBtnPressed,
+                      ]}
+                      onPress={() => void handleOpenYoutube()}
+                      testID="open-youtube-btn"
+                    >
+                      <Ionicons name="play-circle-outline" size={18} color={Colors.primary} />
+                      <Text style={styles.uitlegOpenBtnText}>Bekijk video</Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.uitlegSaveBtn,
+                      savingYoutube && { opacity: 0.6 },
+                      pressed && !savingYoutube && styles.actionBtnPressed,
+                    ]}
+                    onPress={() => void handleSaveYoutubeUrl()}
+                    disabled={savingYoutube}
+                    testID="save-youtube-btn"
+                  >
+                    {savingYoutube ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <Text style={styles.uitlegSaveBtnText}>Link opslaan</Text>
+                    )}
+                  </Pressable>
+                </View>
+                </View>
+              </Animated.View>
             </>
           )}
+            </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1116,11 +1484,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 16,
   },
-  actionSheet: {
+  actionSheetOuter: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  actionSheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -1133,7 +1503,63 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: Colors.borderLight,
     alignSelf: "center",
-    marginBottom: 20,
+  },
+  modalHandleWithVideo: {
+    backgroundColor: Colors.primary,
+  },
+  handleHitArea: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 20,
+    marginBottom: 6,
+    minHeight: 52,
+  },
+  uitlegSectionClip: {
+    overflow: "hidden",
+  },
+  uitlegSection: {
+    height: ACTION_SHEET_UITLEG_HEIGHT,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+    marginTop: 4,
+    paddingTop: 12,
+  },
+  uitlegActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+  },
+  uitlegOpenBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: "#3A2E14",
+  },
+  uitlegOpenBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.primary,
+  },
+  uitlegSaveBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+  },
+  uitlegSaveBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.white,
   },
   modalTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text, marginBottom: 20 },
   fieldLabel: { fontSize: 13, fontFamily: "Inter_500Medium", color: Colors.textSecondary, marginBottom: 8 },

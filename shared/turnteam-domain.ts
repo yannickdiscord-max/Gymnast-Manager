@@ -19,6 +19,8 @@ export interface TurnOnderdeel {
   dWaarde?: number;
   /** Onderdeel kan als afsprong dienen (niet bij Sprong). */
   isAfsprong?: boolean;
+  /** Optionele YouTube-uitlegvideo. */
+  youtubeUrl?: string;
 }
 
 export const TURN_ONDERDEEL_NIVEAUS = ["tA", "A", "B", "C", "D", "E"] as const;
@@ -356,6 +358,7 @@ export const LESPLAN_ACTION_FORBIDDEN = "LESPLAN_ACTION_FORBIDDEN";
 export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";
 export const INVALID_GEBOORTEDATUM = "INVALID_GEBOORTEDATUM";
 export const INVALID_SPRONG_DWAARDE = "INVALID_SPRONG_DWAARDE";
+export const INVALID_YOUTUBE_URL = "INVALID_YOUTUBE_URL";
 
 export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
   tA: 0.1,
@@ -447,6 +450,42 @@ export function parseSprongDWaardeInput(value: string): number | null {
   const parsed = Number.parseFloat(trimmed);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.round(parsed * 10) / 10;
+}
+
+export function hasOnderdeelYoutubeUrl(onderdeel: TurnOnderdeel | undefined): boolean {
+  return (onderdeel?.youtubeUrl?.trim().length ?? 0) > 0;
+}
+
+export function isValidYoutubeUrl(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed) return true;
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host === "youtu.be") return url.pathname.replace(/^\//, "").length > 0;
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      if (url.pathname === "/watch") return !!url.searchParams.get("v")?.trim();
+      if (url.pathname.startsWith("/shorts/")) {
+        return url.pathname.replace("/shorts/", "").length > 0;
+      }
+      if (url.pathname.startsWith("/embed/")) {
+        return url.pathname.replace("/embed/", "").length > 0;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeYoutubeUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  if (!isValidYoutubeUrl(withScheme)) {
+    throw new Error(INVALID_YOUTUBE_URL);
+  }
+  return withScheme;
 }
 
 export const NIVEAUS = [

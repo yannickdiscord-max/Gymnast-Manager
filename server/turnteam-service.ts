@@ -25,6 +25,8 @@ import {
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
   INVALID_SPRONG_DWAARDE,
+  INVALID_YOUTUBE_URL,
+  normalizeYoutubeUrl,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   LESPLAN_ACTION_FORBIDDEN,
@@ -208,6 +210,10 @@ export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> 
       dirty = true;
       next = { ...next, isAfsprong: false };
     }
+    if (next.youtubeUrl == null) {
+      dirty = true;
+      next = { ...next, youtubeUrl: "" };
+    }
     return next;
   });
   if (dirty) {
@@ -286,6 +292,43 @@ export async function updateOnderdeelAfsprong(
   const idx = list.findIndex((o) => o.naam === naam);
   if (idx < 0) return undefined;
   const updated: TurnOnderdeel = { ...list[idx], isAfsprong };
+  list[idx] = updated;
+  parsed[toestel] = list;
+  await db
+    .update(schema.onderdelenCatalog)
+    .set({ data: parsed })
+    .where(eq(schema.onderdelenCatalog.id, CATALOG_ID));
+  return updated;
+}
+
+export async function updateOnderdeelYoutubeUrl(
+  toestel: Toestel,
+  naam: string,
+  youtubeUrlInput: string,
+): Promise<TurnOnderdeel | undefined> {
+  await ensureOnderdelenCatalogRow();
+  const rows = await db
+    .select()
+    .from(schema.onderdelenCatalog)
+    .where(eq(schema.onderdelenCatalog.id, CATALOG_ID))
+    .limit(1);
+  if (!rows[0]) return undefined;
+  const parsed = (rows[0].data as Record<string, TurnOnderdeel[]>) ?? {};
+  const list = parsed[toestel] ?? [];
+  const idx = list.findIndex((o) => o.naam === naam);
+  if (idx < 0) return undefined;
+
+  let youtubeUrl = "";
+  try {
+    youtubeUrl = normalizeYoutubeUrl(youtubeUrlInput);
+  } catch (e) {
+    if (e instanceof Error && e.message === INVALID_YOUTUBE_URL) {
+      throw e;
+    }
+    throw new Error(INVALID_YOUTUBE_URL);
+  }
+
+  const updated: TurnOnderdeel = { ...list[idx], youtubeUrl };
   list[idx] = updated;
   parsed[toestel] = list;
   await db

@@ -12,6 +12,8 @@ import {
   KeyboardAvoidingView,
   PanResponder,
   Alert,
+  Animated,
+  Linking,
 } from "react-native";
 import { ScrollView } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -27,6 +29,10 @@ import {
   addOnderdeel,
   deleteOnderdeel,
   updateOnderdeelAfsprong,
+  updateOnderdeelYoutubeUrl,
+  hasOnderdeelYoutubeUrl,
+  isValidYoutubeUrl,
+  INVALID_YOUTUBE_URL,
   TURN_ONDERDEEL_NIVEAUS,
   ELEMENTGROEPEN,
   ELEMENTGROEP_ROMAN,
@@ -46,6 +52,7 @@ const OEFENING_BG = "#1C3035";
 const OEFENING_BORDER = "#285060";
 const OEFENING_COLOR = "#3DD8BA";
 const OEFENING_BADGE_BG = "#1A4048";
+const ACTION_SHEET_UITLEG_HEIGHT = 168;
 
 export default function ToestelScreen() {
   const { toestelId, sporterId } = useLocalSearchParams<{
@@ -70,6 +77,9 @@ export default function ToestelScreen() {
   const [newDWaarde, setNewDWaarde] = useState("2.0");
   const [newIsAfsprong, setNewIsAfsprong] = useState(false);
   const [togglingAfsprong, setTogglingAfsprong] = useState(false);
+  const [youtubeUrlInput, setYoutubeUrlInput] = useState("");
+  const [savingYoutube, setSavingYoutube] = useState(false);
+  const [youtubeError, setYoutubeError] = useState("");
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -85,6 +95,55 @@ export default function ToestelScreen() {
   const containerRef = useRef<View>(null);
   const [draggingNaam, setDraggingNaam] = useState<string | null>(null);
   const [draggingToIdx, setDraggingToIdx] = useState<number | null>(null);
+  const actionSheetExpandAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!actionItem) {
+      actionSheetExpandAnim.setValue(0);
+      setYoutubeUrlInput("");
+      setYoutubeError("");
+      return;
+    }
+    setYoutubeUrlInput(actionItem.youtubeUrl ?? "");
+    setYoutubeError("");
+    actionSheetExpandAnim.setValue(0);
+  }, [actionItem, actionSheetExpandAnim]);
+
+  const setActionSheetExpandedState = useCallback(
+    (expanded: boolean) => {
+      Animated.spring(actionSheetExpandAnim, {
+        toValue: expanded ? 1 : 0,
+        useNativeDriver: false,
+        friction: 9,
+        tension: 70,
+      }).start();
+    },
+    [actionSheetExpandAnim],
+  );
+
+  const actionSheetPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dy) > 4,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dy < -28) {
+          setActionSheetExpandedState(true);
+        } else if (gesture.dy > 28) {
+          setActionSheetExpandedState(false);
+        } else if (gesture.dy < 0) {
+          setActionSheetExpandedState(true);
+        } else {
+          setActionSheetExpandedState(false);
+        }
+      },
+    }),
+  ).current;
+
+  const uitlegSectionHeight = actionSheetExpandAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, ACTION_SHEET_UITLEG_HEIGHT],
+  });
 
   useEffect(() => {
     oefeningRef.current = oefening;
@@ -179,7 +238,7 @@ export default function ToestelScreen() {
   const listExtraData = useMemo(
     () =>
       `${oefening.join("\u0001")}|${oefeningDWaarde}|${onderdelen
-        .map((o) => `${o.naam}:${o.isAfsprong ? 1 : 0}:${o.dWaarde ?? ""}`)
+        .map((o) => `${o.naam}:${o.isAfsprong ? 1 : 0}:${o.dWaarde ?? ""}:${o.youtubeUrl ?? ""}`)
         .join("\u0001")}`,
     [oefening, oefeningDWaarde, onderdelen],
   );
@@ -187,6 +246,49 @@ export default function ToestelScreen() {
   const handleOnderdeelPress = (item: TurnOnderdeel) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActionItem(item);
+  };
+
+  const handleSaveYoutubeUrl = async () => {
+    if (!actionItem || savingYoutube) return;
+    const trimmed = youtubeUrlInput.trim();
+    if (trimmed && !isValidYoutubeUrl(trimmed)) {
+      setYoutubeError("Gebruik een geldige YouTube-link.");
+      return;
+    }
+    setSavingYoutube(true);
+    setYoutubeError("");
+    try {
+      const updated = await updateOnderdeelYoutubeUrl(
+        toestel,
+        actionItem.naam,
+        trimmed,
+      );
+      const refreshed = await getOnderdelen(toestel);
+      setOnderdelen(refreshed);
+      const merged =
+        refreshed.find((o) => o.naam === updated.naam) ?? updated;
+      setActionItem(merged);
+      setYoutubeUrlInput(merged.youtubeUrl ?? "");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      if (e instanceof Error && e.message === INVALID_YOUTUBE_URL) {
+        setYoutubeError("Gebruik een geldige YouTube-link.");
+      } else {
+        setYoutubeError("Opslaan mislukt.");
+      }
+    } finally {
+      setSavingYoutube(false);
+    }
+  };
+
+  const handleOpenYoutube = async () => {
+    const url = actionItem?.youtubeUrl?.trim();
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Fout", "Kon de video niet openen.");
+    }
   };
 
   const handleSetGeleerd = async (naam: string) => {
@@ -660,7 +762,14 @@ export default function ToestelScreen() {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setActionItem(null)} />
         <View style={[styles.actionSheet, { paddingBottom: insets.bottom + webBottomInset + 16 }]}>
-          <View style={styles.modalHandle} />
+          <View style={styles.handleHitArea} {...actionSheetPanResponder.panHandlers}>
+            <View
+              style={[
+                styles.modalHandle,
+                hasOnderdeelYoutubeUrl(actionItem ?? undefined) && styles.modalHandleWithVideo,
+              ]}
+            />
+          </View>
           {actionItem && (
             <>
               <View style={styles.actionHeader}>
@@ -801,6 +910,60 @@ export default function ToestelScreen() {
                   </Pressable>
                 )}
               </View>
+
+              <Animated.View
+                style={[styles.uitlegSection, { height: uitlegSectionHeight }]}
+              >
+                <Text style={styles.fieldLabel}>YouTube-uitleg</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={youtubeUrlInput}
+                  onChangeText={(t) => {
+                    setYoutubeUrlInput(t);
+                    setYoutubeError("");
+                  }}
+                  placeholder="https://youtube.com/watch?v=..."
+                  placeholderTextColor={Colors.textTertiary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  testID="youtube-url-input"
+                />
+                {!!youtubeError && (
+                  <Text style={styles.errorText}>{youtubeError}</Text>
+                )}
+                <View style={styles.uitlegActions}>
+                  {hasOnderdeelYoutubeUrl(actionItem) && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.uitlegOpenBtn,
+                        pressed && styles.actionBtnPressed,
+                      ]}
+                      onPress={() => void handleOpenYoutube()}
+                      testID="open-youtube-btn"
+                    >
+                      <Ionicons name="play-circle-outline" size={18} color={Colors.primary} />
+                      <Text style={styles.uitlegOpenBtnText}>Bekijk video</Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.uitlegSaveBtn,
+                      savingYoutube && { opacity: 0.6 },
+                      pressed && !savingYoutube && styles.actionBtnPressed,
+                    ]}
+                    onPress={() => void handleSaveYoutubeUrl()}
+                    disabled={savingYoutube}
+                    testID="save-youtube-btn"
+                  >
+                    {savingYoutube ? (
+                      <ActivityIndicator size="small" color={Colors.white} />
+                    ) : (
+                      <Text style={styles.uitlegSaveBtnText}>Link opslaan</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </Animated.View>
             </>
           )}
         </View>
@@ -1133,7 +1296,58 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: Colors.borderLight,
     alignSelf: "center",
-    marginBottom: 20,
+  },
+  modalHandleWithVideo: {
+    backgroundColor: Colors.primary,
+  },
+  handleHitArea: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    paddingVertical: 10,
+    marginBottom: 10,
+  },
+  uitlegSection: {
+    overflow: "hidden",
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+    marginTop: 4,
+    paddingTop: 12,
+  },
+  uitlegActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 12,
+  },
+  uitlegOpenBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: "#3A2E14",
+  },
+  uitlegOpenBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.primary,
+  },
+  uitlegSaveBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+  },
+  uitlegSaveBtnText: {
+    fontSize: 14,
+    fontFamily: "Inter_600SemiBold",
+    color: Colors.white,
   },
   modalTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: Colors.text, marginBottom: 20 },
   fieldLabel: { fontSize: 13, fontFamily: "Inter_500Medium", color: Colors.textSecondary, marginBottom: 8 },

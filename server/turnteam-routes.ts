@@ -15,6 +15,7 @@ import {
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
   INVALID_TRAINING_SESSION_DATUM,
+  INVALID_YOUTUBE_URL,
   LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
@@ -207,6 +208,39 @@ export function registerTurnteamRoutes(app: Express): void {
         return;
       }
       res.json(updated);
+    }),
+  );
+
+  api.patch(
+    "/onderdelen/:toestel/youtube",
+    asyncHandler(async (req, res) => {
+      const naam = String(req.body?.naam ?? "").trim();
+      if (!naam) {
+        badRequest(res, "naam is required");
+        return;
+      }
+      if (typeof req.body?.youtubeUrl !== "string") {
+        badRequest(res, "youtubeUrl string is required");
+        return;
+      }
+      try {
+        const updated = await svc.updateOnderdeelYoutubeUrl(
+          pid(req, "toestel") as Toestel,
+          naam,
+          req.body.youtubeUrl,
+        );
+        if (!updated) {
+          res.status(404).json({ error: "onderdeel not found" });
+          return;
+        }
+        res.json(updated);
+      } catch (e) {
+        if (e instanceof Error && e.message === INVALID_YOUTUBE_URL) {
+          badRequest(res, "invalid youtube url");
+          return;
+        }
+        throw e;
+      }
     }),
   );
 

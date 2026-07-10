@@ -48,6 +48,7 @@ export {
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
   INVALID_SPRONG_DWAARDE,
+  INVALID_YOUTUBE_URL,
   INVALID_TRAINING_SESSION_DATUM,
   NO_TRAINING_SESSIONS_TO_ARCHIVE,
   TRAINING_SESSION_NOT_FOUND,
@@ -64,6 +65,9 @@ export {
   calculateAfsprongBonus,
   calculateOefeningDWaarde,
   isOnderdeelMarkedAfsprong,
+  hasOnderdeelYoutubeUrl,
+  isValidYoutubeUrl,
+  normalizeYoutubeUrl,
   calculateSprongOefeningDWaarde,
   getMinimumForNiveau,
   isSprongToestel,
@@ -112,6 +116,17 @@ export async function updateOnderdeelAfsprong(
   return apiFetch(`/api/onderdelen/${encodeURIComponent(toestel)}`, {
     method: "PATCH",
     body: JSON.stringify({ naam, isAfsprong }),
+  });
+}
+
+export async function updateOnderdeelYoutubeUrl(
+  toestel: Toestel,
+  naam: string,
+  youtubeUrl: string,
+): Promise<TurnOnderdeel> {
+  return apiFetch(`/api/onderdelen/${encodeURIComponent(toestel)}/youtube`, {
+    method: "PATCH",
+    body: JSON.stringify({ naam, youtubeUrl }),
   });
 }
 

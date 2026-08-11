@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -17,9 +17,12 @@ import * as Haptics from "expo-haptics";
 import Colors from "@/constants/colors";
 import {
   getSporters,
+  getTrainingSessionForDatum,
   addTrainingSession,
+  updateTrainingSessionAttendees,
   DUPLICATE_TRAINING_SESSION_ERROR,
   INVALID_TRAINING_SESSION_DATUM,
+  TRAINING_SESSION_NOT_FOUND,
   NIVEAUS,
   type Sporter,
 } from "@/lib/storage";
@@ -38,23 +41,62 @@ export default function TrainingAttendanceScreen() {
   const [loading, setLoading] = useState(true);
   const [datum, setDatum] = useState(formatTodayEuropean);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
+  const [loadingSession, setLoadingSession] = useState(false);
   const [saving, setSaving] = useState(false);
+  const loadSessionRequestId = useRef(0);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const webBottomInset = Platform.OS === "web" ? 34 : 0;
 
   useFocusEffect(
     useCallback(() => {
-      loadSporters();
+      void loadSporters();
     }, [])
   );
 
   const loadSporters = async () => {
     setLoading(true);
-    const data = await getSporters();
-    setSporters(data);
-    setLoading(false);
+    try {
+      setSporters(await getSporters());
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    const requestId = ++loadSessionRequestId.current;
+    const trimmed = datum.trim();
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        setLoadingSession(true);
+        try {
+          const session = await getTrainingSessionForDatum(trimmed);
+          if (requestId !== loadSessionRequestId.current) return;
+          if (session) {
+            setExistingSessionId(session.id);
+            setSelected(new Set(session.attendeeSporterIds));
+          } else {
+            setExistingSessionId(null);
+            setSelected(new Set());
+          }
+        } catch {
+          if (requestId !== loadSessionRequestId.current) return;
+          setExistingSessionId(null);
+          setSelected(new Set());
+        } finally {
+          if (requestId === loadSessionRequestId.current) {
+            setLoadingSession(false);
+          }
+        }
+      })();
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [datum]);
 
   const sortSporters = (list: Sporter[]) =>
     [...list].sort((a, b) => {
@@ -77,20 +119,32 @@ export default function TrainingAttendanceScreen() {
     if (saving) return;
     setSaving(true);
     try {
-      await addTrainingSession(datum, Array.from(selected));
+      const attendees = Array.from(selected);
+      if (existingSessionId) {
+        await updateTrainingSessionAttendees(existingSessionId, attendees);
+      } else {
+        const created = await addTrainingSession(datum, attendees);
+        setExistingSessionId(created.id);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (e) {
       if (e instanceof Error && e.message === DUPLICATE_TRAINING_SESSION_ERROR) {
         Alert.alert(
           "Training bestaat al",
-          "Er is al een training opgeslagen voor deze datum. Kies een andere datum of bewerk de bestaande registratie later als die functie beschikbaar is."
+          "Er is al een training opgeslagen voor deze datum. Laad het scherm opnieuw of kies een andere datum."
         );
       } else if (e instanceof Error && e.message === INVALID_TRAINING_SESSION_DATUM) {
         Alert.alert(
           "Ongeldige datum",
           "Gebruik het formaat DD-MM-JJJJ (bijv. 24-04-2026)."
         );
+      } else if (e instanceof Error && e.message === TRAINING_SESSION_NOT_FOUND) {
+        Alert.alert(
+          "Training niet gevonden",
+          "Deze training bestaat niet meer. Pas de datum aan of sla opnieuw op."
+        );
+        setExistingSessionId(null);
       } else {
         Alert.alert("Opslaan mislukt", "Er ging iets mis bij het opslaan van de training.");
       }
@@ -108,6 +162,7 @@ export default function TrainingAttendanceScreen() {
   }
 
   const sorted = sortSporters(sporters);
+  const isEditingExisting = existingSessionId !== null;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + webTopInset }]}>
@@ -117,7 +172,11 @@ export default function TrainingAttendanceScreen() {
         </Pressable>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Training — aanwezigheid</Text>
-          <Text style={styles.headerSub}>Selecteer de aanwezige sporters</Text>
+          <Text style={styles.headerSub}>
+            {isEditingExisting
+              ? "Bestaande training — pas aanwezigheid aan"
+              : "Selecteer de aanwezige sporters"}
+          </Text>
         </View>
         <View style={styles.headerRightPlaceholder} />
       </View>
@@ -134,6 +193,16 @@ export default function TrainingAttendanceScreen() {
           maxLength={10}
           testID="training-datum-input"
         />
+        {loadingSession ? (
+          <View style={styles.sessionHintRow}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <Text style={styles.sessionHint}>Training laden…</Text>
+          </View>
+        ) : isEditingExisting ? (
+          <Text style={styles.sessionHintExisting} testID="existing-training-hint">
+            Training gevonden — aanwezige sporters zijn aangevinkt
+          </Text>
+        ) : null}
       </View>
 
       <FlatList
@@ -184,7 +253,7 @@ export default function TrainingAttendanceScreen() {
             saving && { opacity: 0.6 },
           ]}
           onPress={handleSave}
-          disabled={saving || sorted.length === 0}
+          disabled={saving || sorted.length === 0 || loadingSession}
           testID="save-training-attendance-btn"
         >
           {saving ? (
@@ -192,7 +261,9 @@ export default function TrainingAttendanceScreen() {
           ) : (
             <>
               <Ionicons name="save-outline" size={20} color={Colors.white} />
-              <Text style={styles.saveButtonText}>Training opslaan</Text>
+              <Text style={styles.saveButtonText}>
+                {isEditingExisting ? "Wijzigingen opslaan" : "Training opslaan"}
+              </Text>
             </>
           )}
         </Pressable>
@@ -258,6 +329,23 @@ const styles = StyleSheet.create({
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.borderLight,
+  },
+  sessionHintRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  sessionHint: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: Colors.textTertiary,
+  },
+  sessionHintExisting: {
+    marginTop: 10,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    color: Colors.primary,
   },
   listContent: {
     paddingHorizontal: 20,

@@ -12,7 +12,6 @@ import {
   type Idee,
   type IdeeCategorie,
   type Sporter,
-  type SporterAttendanceArchive,
   type SporterBlessures,
   type ToestelScore,
   type TrainingSession,
@@ -22,7 +21,6 @@ import {
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_TRAINING_SESSION_DATUM,
   TRAINING_SESSION_NOT_FOUND,
-  NO_TRAINING_SESSIONS_TO_ARCHIVE,
   INVALID_AGENDA_DATUM,
   INVALID_AGENDA_EINDDATUM,
   INVALID_AGENDA_PERIODE,
@@ -59,8 +57,6 @@ import {
   isAgendaVrijPeriodeUpcoming,
   normalizeOuderGesprekDatum,
   normalizeTrainingSessionDatum,
-  defaultTurnSeasonLabel,
-  formatTodayEuropean,
   trainingSessionDatumToTime,
   wedstrijdDatumToTimestamp,
 } from "../shared/turnteam-dates";
@@ -667,6 +663,22 @@ export async function deleteTrainingSessionById(sessionId: string): Promise<bool
   return (rowCount ?? 0) > 0;
 }
 
+export async function updateTrainingSessionAttendees(
+  sessionId: string,
+  attendeeSporterIds: string[],
+): Promise<TrainingSession> {
+  const session = await getTrainingSessionById(sessionId);
+  if (!session) {
+    throw new Error(TRAINING_SESSION_NOT_FOUND);
+  }
+  const uniqueIds = [...new Set(attendeeSporterIds.filter(Boolean))];
+  await db
+    .update(schema.trainingSessions)
+    .set({ attendeeSporterIds: uniqueIds })
+    .where(eq(schema.trainingSessions.id, sessionId));
+  return { ...session, attendeeSporterIds: uniqueIds };
+}
+
 export async function setSporterAttendanceForSession(
   sessionId: string,
   sporterId: string,
@@ -731,124 +743,6 @@ export async function getSporterAttendanceSummary(sporterId: string): Promise<{
       trainingSessionDatumToTime(a.datum) - trainingSessionDatumToTime(b.datum),
   );
   return computeSporterAttendanceFromSessions(sporterId, sorted);
-}
-
-export async function getSporterAttendanceArchives(
-  sporterId: string,
-): Promise<SporterAttendanceArchive[]> {
-  const rows = await db
-    .select()
-    .from(schema.sporterAttendanceArchives)
-    .where(eq(schema.sporterAttendanceArchives.sporterId, sporterId));
-  return rows
-    .map((r) => ({
-      id: r.id,
-      sporterId: r.sporterId,
-      seasonBatchId: r.seasonBatchId,
-      seasonLabel: r.seasonLabel,
-      archivedAt: r.archivedAt,
-      attendedSessions: r.attendedSessions,
-      totalSessions: r.totalSessions,
-      percentage: r.percentage,
-    }))
-    .sort(
-      (a, b) =>
-        trainingSessionDatumToTime(b.archivedAt) -
-        trainingSessionDatumToTime(a.archivedAt),
-    );
-}
-
-export async function getAttendanceArchiveBatches(): Promise<
-  Array<{
-    seasonBatchId: string;
-    seasonLabel: string;
-    archivedAt: string;
-    totalSessions: number;
-  }>
-> {
-  const rows = await db.select().from(schema.sporterAttendanceArchives);
-
-  // totalSessions is the same for all sporters in a batch; we collapse by seasonBatchId.
-  const byBatch = new Map<
-    string,
-    {
-      seasonBatchId: string;
-      seasonLabel: string;
-      archivedAt: string;
-      totalSessions: number;
-    }
-  >();
-
-  for (const r of rows) {
-    if (byBatch.has(r.seasonBatchId)) continue;
-    byBatch.set(r.seasonBatchId, {
-      seasonBatchId: r.seasonBatchId,
-      seasonLabel: r.seasonLabel,
-      archivedAt: r.archivedAt,
-      totalSessions: r.totalSessions as number,
-    });
-  }
-
-  return Array.from(byBatch.values()).sort(
-    (a, b) =>
-      trainingSessionDatumToTime(b.archivedAt) -
-      trainingSessionDatumToTime(a.archivedAt),
-  );
-}
-
-export async function deleteAttendanceArchiveBatch(
-  seasonBatchId: string,
-): Promise<void> {
-  await db
-    .delete(schema.sporterAttendanceArchives)
-    .where(eq(schema.sporterAttendanceArchives.seasonBatchId, seasonBatchId));
-}
-
-export async function archiveAttendanceSeason(seasonLabelInput?: string): Promise<{
-  seasonBatchId: string;
-  seasonLabel: string;
-  archivedAt: string;
-  sporterCount: number;
-  trainingSessionCount: number;
-}> {
-  const sessions = await getTrainingSessions();
-  if (sessions.length === 0) {
-    throw new Error(NO_TRAINING_SESSIONS_TO_ARCHIVE);
-  }
-  const sorted = [...sessions].sort(
-    (a, b) =>
-      trainingSessionDatumToTime(a.datum) - trainingSessionDatumToTime(b.datum),
-  );
-  const sporters = await listSporters();
-  const seasonBatchId = randomUUID();
-  const trimmedLabel = seasonLabelInput?.trim();
-  const seasonLabel = trimmedLabel || defaultTurnSeasonLabel();
-  const archivedAt = formatTodayEuropean();
-
-  await db.transaction(async (tx) => {
-    for (const sporter of sporters) {
-      const stats = computeSporterAttendanceFromSessions(sporter.id, sorted);
-      await tx.insert(schema.sporterAttendanceArchives).values({
-        id: randomUUID(),
-        sporterId: sporter.id,
-        seasonBatchId,
-        seasonLabel,
-        archivedAt,
-        attendedSessions: stats.attendedSessions,
-        totalSessions: stats.totalSessions,
-        percentage: stats.percentage ?? 0,
-      });
-    }
-    await tx.delete(schema.trainingSessions);
-  });
-
-  return {
-    seasonBatchId,
-    seasonLabel,
-    archivedAt,
-    sporterCount: sporters.length,
-    trainingSessionCount: sorted.length,
-  };
 }
 
 export async function getOuderGesprekkenForSporter(

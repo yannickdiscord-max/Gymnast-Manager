@@ -10,7 +10,6 @@ import type {
 import {
   DUPLICATE_TRAINING_SESSION_ERROR,
   TRAINING_SESSION_NOT_FOUND,
-  NO_TRAINING_SESSIONS_TO_ARCHIVE,
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_AGENDA_DATUM,
   INVALID_AGENDA_EINDDATUM,
@@ -361,28 +360,25 @@ export function registerTurnteamRoutes(app: Express): void {
     }),
   );
 
-  api.get(
-    "/training-sessions/attendance/:sporterId",
-    asyncHandler(async (req, res) => {
-      res.json(
-        await svc.getSporterAttendanceSummary(pid(req, "sporterId")),
-      );
-    }),
-  );
-
-  api.post(
-    "/training-sessions/archive-season",
+  api.patch(
+    "/training-sessions/:sessionId",
     asyncHandler(async (req, res) => {
       try {
-        const seasonLabel =
-          typeof req.body?.seasonLabel === "string"
-            ? req.body.seasonLabel
-            : undefined;
-        res.json(await svc.archiveAttendanceSeason(seasonLabel));
+        const attendeeSporterIds = req.body?.attendeeSporterIds;
+        if (!Array.isArray(attendeeSporterIds)) {
+          badRequest(res, "attendeeSporterIds array required");
+          return;
+        }
+        res.json(
+          await svc.updateTrainingSessionAttendees(
+            pid(req, "sessionId"),
+            attendeeSporterIds as string[],
+          ),
+        );
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg === NO_TRAINING_SESSIONS_TO_ARCHIVE) {
-          res.status(400).json({ message: msg });
+        if (msg === TRAINING_SESSION_NOT_FOUND) {
+          res.status(404).json({ message: msg });
           return;
         }
         throw e;
@@ -391,25 +387,10 @@ export function registerTurnteamRoutes(app: Express): void {
   );
 
   api.get(
-    "/training-sessions/archive-batches",
-    asyncHandler(async (_req, res) => {
-      res.json(await svc.getAttendanceArchiveBatches());
-    }),
-  );
-
-  api.delete(
-    "/training-sessions/archive-batches/:seasonBatchId",
-    asyncHandler(async (req, res) => {
-      await svc.deleteAttendanceArchiveBatch(pid(req, "seasonBatchId"));
-      res.status(204).end();
-    }),
-  );
-
-  api.get(
-    "/training-sessions/attendance/:sporterId/archives",
+    "/training-sessions/attendance/:sporterId",
     asyncHandler(async (req, res) => {
       res.json(
-        await svc.getSporterAttendanceArchives(pid(req, "sporterId")),
+        await svc.getSporterAttendanceSummary(pid(req, "sporterId")),
       );
     }),
   );

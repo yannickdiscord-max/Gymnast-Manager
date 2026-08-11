@@ -12,7 +12,6 @@ export type {
   Elementgroep,
   OuderGesprek,
   Sporter,
-  SporterAttendanceArchive,
   SporterBlessures,
   Toestel,
   ToestelScore,
@@ -32,7 +31,6 @@ import type {
   OuderGesprek,
   OuderGesprekType,
   Sporter,
-  SporterAttendanceArchive,
   SporterBlessures,
   Toestel,
   ToestelScore,
@@ -60,7 +58,6 @@ export {
   INVALID_SPRONG_DWAARDE,
   INVALID_YOUTUBE_URL,
   INVALID_TRAINING_SESSION_DATUM,
-  NO_TRAINING_SESSIONS_TO_ARCHIVE,
   TRAINING_SESSION_NOT_FOUND,
   LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
@@ -283,6 +280,16 @@ export async function addTrainingSession(
   });
 }
 
+export async function updateTrainingSessionAttendees(
+  sessionId: string,
+  attendeeSporterIds: string[],
+): Promise<TrainingSession> {
+  return apiFetch(`/api/training-sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ attendeeSporterIds }),
+  });
+}
+
 export async function deleteTrainingSession(sessionId: string): Promise<void> {
   await apiFetch(`/api/training-sessions/${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
@@ -312,40 +319,6 @@ export async function setSporterAttendanceForSession(
       body: JSON.stringify({ attended }),
     },
   );
-}
-
-export async function getSporterAttendanceArchives(
-  sporterId: string,
-): Promise<SporterAttendanceArchive[]> {
-  return apiFetch(
-    `/api/training-sessions/attendance/${encodeURIComponent(sporterId)}/archives`,
-  );
-}
-
-export async function deleteAttendanceArchiveBatch(
-  seasonBatchId: string,
-): Promise<void> {
-  await apiFetch(
-    `/api/training-sessions/archive-batches/${encodeURIComponent(
-      seasonBatchId,
-    )}`,
-    { method: "DELETE" },
-  );
-}
-
-export async function archiveAttendanceSeason(seasonLabel?: string): Promise<{
-  seasonBatchId: string;
-  seasonLabel: string;
-  archivedAt: string;
-  sporterCount: number;
-  trainingSessionCount: number;
-}> {
-  return apiFetch("/api/training-sessions/archive-season", {
-    method: "POST",
-    body: JSON.stringify(
-      seasonLabel?.trim() ? { seasonLabel: seasonLabel.trim() } : {},
-    ),
-  });
 }
 
 export async function getOuderGesprekkenForSporter(

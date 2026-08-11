@@ -16,19 +16,13 @@ import * as Haptics from "expo-haptics";
 import { Swipeable } from "react-native-gesture-handler";
 import Colors from "@/constants/colors";
 import {
-  archiveAttendanceSeason,
   deleteTrainingSession,
   getSporter,
-  getSporterAttendanceArchives,
   getTrainingSessions,
-  deleteAttendanceArchiveBatch,
-  NO_TRAINING_SESSIONS_TO_ARCHIVE,
   setSporterAttendanceForSession,
   TRAINING_SESSION_NOT_FOUND,
   type Sporter,
-  type SporterAttendanceArchive,
 } from "@/lib/storage";
-import { defaultTurnSeasonLabel } from "@shared/turnteam-dates";
 
 type AttendanceRow = {
   sessionId: string;
@@ -106,13 +100,8 @@ export default function AanwezigheidScreen() {
   const insets = useSafeAreaInsets();
   const [sporter, setSporter] = useState<Sporter | null>(null);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
-  const [archives, setArchives] = useState<SporterAttendanceArchive[]>([]);
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [archiving, setArchiving] = useState(false);
-  const [deletingArchiveBatchId, setDeletingArchiveBatchId] = useState<
-    string | null
-  >(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -121,13 +110,11 @@ export default function AanwezigheidScreen() {
   const loadData = useCallback(async () => {
     if (!sporterId) return;
     setLoading(true);
-    const [sporterData, sessions, archiveList] = await Promise.all([
+    const [sporterData, sessions] = await Promise.all([
       getSporter(sporterId),
       getTrainingSessions(),
-      getSporterAttendanceArchives(sporterId),
     ]);
     setSporter(sporterData ?? null);
-    setArchives(archiveList);
     const list: AttendanceRow[] = sessions
       .map((s) => ({
         sessionId: s.id,
@@ -192,104 +179,8 @@ export default function AanwezigheidScreen() {
     }
   };
 
-  const handleArchiveSeason = () => {
-    if (archiving || rows.length === 0) return;
-    const seasonLabel = defaultTurnSeasonLabel();
-
-    const summaryLine = `${summary?.attended ?? 0} van ${summary?.total ?? 0} trainingen (${summary?.percentage ?? 0}%)`;
-
-    const doArchive = async () => {
-      setArchiving(true);
-      try {
-        const result = await archiveAttendanceSeason(seasonLabel);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await loadData();
-        Alert.alert(
-          "Seizoen gearchiveerd",
-          `Seizoen ${result.seasonLabel} is opgeslagen voor ${result.sporterCount} sporters (${result.trainingSessionCount} trainingen). Je kunt nu opnieuw trainingen registreren.`,
-        );
-      } catch (e) {
-        if (e instanceof Error && e.message === NO_TRAINING_SESSIONS_TO_ARCHIVE) {
-          Alert.alert("Geen trainingen", "Er zijn geen trainingen om te archiveren.");
-        } else {
-          Alert.alert(
-            "Archiveren mislukt",
-            "Het seizoen kon niet worden afgesloten. Controleer of de server draait en herstart deze indien nodig.",
-          );
-        }
-      } finally {
-        setArchiving(false);
-      }
-    };
-
-    // Extra check: twee keer bevestigen (om misclicks te voorkomen).
-    Alert.alert(
-      "Turnseizoen afsluiten?",
-      `Je gaat seizoen ${seasonLabel} archiveren.\n\nDit verwijdert daarna alle geregistreerde trainingen.\n\nVoor ${sporter?.naam ?? "deze sporter"}: ${summaryLine}`,
-      [
-        { text: "Annuleren", style: "cancel" },
-        {
-          text: "Doorgaan",
-          style: "destructive",
-          onPress: () => {
-            Alert.alert(
-              "Laatste bevestiging",
-              `Weet je het zeker? Dit kan niet ongedaan worden gemaakt.\n\nSeizoen: ${seasonLabel}`,
-              [
-                { text: "Annuleren", style: "cancel" },
-                {
-                  text: "Ja, archiveren",
-                  style: "destructive",
-                  onPress: () => {
-                    void doArchive();
-                  },
-                },
-              ],
-            );
-          },
-        },
-      ],
-    );
-  };
-
-  const handleDeleteArchiveBatch = (
-    seasonBatchId: string,
-    seasonLabel: string,
-  ) => {
-    if (archiving || deletingArchiveBatchId) return;
-
-    Alert.alert(
-      "Gearchiveerd seizoen verwijderen?",
-      `Seizoen ${seasonLabel} verwijderen.\n\nDit verwijdert de opgeslagen samenvatting (en maakt trainingen niet terug).`,
-      [
-        { text: "Annuleren", style: "cancel" },
-        {
-          text: "Verwijderen",
-          style: "destructive",
-          onPress: async () => {
-            setDeletingArchiveBatchId(seasonBatchId);
-            try {
-              await deleteAttendanceArchiveBatch(seasonBatchId);
-              Haptics.notificationAsync(
-                Haptics.NotificationFeedbackType.Success,
-              );
-              await loadData();
-            } catch {
-              Alert.alert(
-                "Verwijderen mislukt",
-                "Het gearchiveerde seizoen kon niet verwijderd worden.",
-              );
-            } finally {
-              setDeletingArchiveBatchId(null);
-            }
-          },
-        },
-      ],
-    );
-  };
-
   const handleDeleteTrainingSession = (sessionId: string, datum: string) => {
-    if (archiving || deletingArchiveBatchId || deletingSessionId) return;
+    if (deletingSessionId) return;
     Alert.alert(
       "Training verwijderen?",
       `Training op ${datum} verwijderen.\n\nDit verwijdert de training voor alle sporters en kan niet ongedaan worden gemaakt.`,
@@ -355,13 +246,12 @@ export default function AanwezigheidScreen() {
       </View>
 
       <View style={styles.summaryBar}>
-        <Text style={styles.summarySeasonLabel}>Huidig seizoen</Text>
         {summary ? (
           <Text style={styles.summaryText}>
             {summary.attended} van {summary.total} trainingen ({summary.percentage}%)
           </Text>
         ) : (
-          <Text style={styles.summaryText}>Nog geen trainingen in dit seizoen</Text>
+          <Text style={styles.summaryText}>Nog geen trainingen</Text>
         )}
       </View>
 
@@ -372,73 +262,8 @@ export default function AanwezigheidScreen() {
         contentContainerStyle={[
           styles.listContent,
           sections.length === 0 && styles.listContentEmpty,
-          { paddingBottom: insets.bottom + webBottomInset + 100 },
+          { paddingBottom: insets.bottom + webBottomInset + 24 },
         ]}
-        ListFooterComponent={
-          <View style={{ gap: 12 }}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.archiveSeasonButton,
-                pressed && styles.archiveSeasonButtonPressed,
-                (archiving || rows.length === 0) && styles.archiveSeasonButtonDisabled,
-              ]}
-              onPress={handleArchiveSeason}
-              disabled={archiving || rows.length === 0}
-              testID="archive-season-btn"
-            >
-              {archiving ? (
-                <ActivityIndicator size="small" color={Colors.text} />
-              ) : (
-                <>
-                  <Ionicons name="archive-outline" size={20} color={Colors.text} />
-                  <Text style={styles.archiveSeasonButtonText}>Turnseizoen afsluiten</Text>
-                </>
-              )}
-            </Pressable>
-
-            {archives.length > 0 && (
-              <View style={styles.archivesBlock}>
-                <Text style={styles.archivesTitle}>Vorige seizoenen</Text>
-                {archives.map((a) => (
-                  <Swipeable
-                    key={a.id}
-                    enabled={!archiving && deletingArchiveBatchId == null}
-                    friction={2}
-                    rightThreshold={28}
-                    renderRightActions={() => (
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.archiveSwipeAction,
-                          pressed && styles.archiveSwipeActionPressed,
-                          deletingArchiveBatchId === a.seasonBatchId &&
-                            styles.archiveSwipeActionDisabled,
-                        ]}
-                        onPress={() =>
-                          handleDeleteArchiveBatch(a.seasonBatchId, a.seasonLabel)
-                        }
-                        disabled={deletingArchiveBatchId === a.seasonBatchId}
-                        testID={`delete-archive-${a.seasonBatchId}`}
-                      >
-                        {deletingArchiveBatchId === a.seasonBatchId ? (
-                          <ActivityIndicator size="small" color={Colors.text} />
-                        ) : (
-                          <Text style={styles.archiveSwipeActionText}>Verwijderen</Text>
-                        )}
-                      </Pressable>
-                    )}
-                  >
-                    <View style={styles.archiveCard}>
-                      <Text style={styles.archiveSeason}>Seizoen {a.seasonLabel}</Text>
-                      <Text style={styles.archiveStats}>
-                        {a.attendedSessions} van {a.totalSessions} trainingen ({a.percentage}%)
-                      </Text>
-                    </View>
-                  </Swipeable>
-                ))}
-              </View>
-            )}
-          </View>
-        }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
@@ -453,7 +278,7 @@ export default function AanwezigheidScreen() {
           const deleting = deletingSessionId === item.sessionId;
           return (
             <Swipeable
-              enabled={!busy && !deleting && !archiving && deletingArchiveBatchId == null}
+              enabled={!busy && !deleting}
               friction={2}
               rightThreshold={28}
               renderRightActions={() => (
@@ -583,61 +408,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.borderLight,
     gap: 4,
   },
-  summarySeasonLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-    color: Colors.textTertiary,
-    textAlign: "center",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
   summaryText: {
     fontSize: 14,
     fontFamily: "Inter_500Medium",
     color: Colors.textSecondary,
     textAlign: "center",
-  },
-  archivesBlock: {
-    marginHorizontal: 20,
-    marginBottom: 12,
-    gap: 8,
-  },
-  archivesTitle: {
-    fontSize: 13,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.textSecondary,
-    marginBottom: 2,
-  },
-  archiveCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 4,
-  },
-  archiveSwipeAction: {
-    width: 120,
-    borderRadius: 12,
-    marginLeft: 10,
-    alignSelf: "stretch",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#DC2626",
-    backgroundColor: "#DC2626",
-  },
-  archiveSwipeActionPressed: {
-    transform: [{ scale: 0.98 }],
-  },
-  archiveSwipeActionDisabled: {
-    opacity: 0.45,
-  },
-  archiveSwipeActionText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.white,
   },
   trainingSwipeAction: {
     width: 120,
@@ -661,41 +436,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
     color: Colors.white,
-  },
-  archiveSeason: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.text,
-  },
-  archiveStats: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    color: Colors.textSecondary,
-  },
-  archiveSeasonButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
-  },
-  archiveSeasonButtonPressed: {
-    backgroundColor: Colors.surfaceSecondary,
-    transform: [{ scale: 0.99 }],
-  },
-  archiveSeasonButtonDisabled: {
-    opacity: 0.45,
-  },
-  archiveSeasonButtonText: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.text,
   },
   hint: {
     fontSize: 13,

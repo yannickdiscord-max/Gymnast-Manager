@@ -37,7 +37,6 @@ import {
   IDEE_NOT_FOUND,
   LESPLAN_ACTION_FORBIDDEN,
   type LesplanVisibility,
-  ONDERDELEN_PER_TOESTEL,
   SPRONG_MAX_OEFENING_ONDERDELEN,
   TOESTELLEN,
   sortOnderdelenForToestel,
@@ -190,7 +189,7 @@ export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> 
   const parsed =
     (rows[0]?.data as Record<string, TurnOnderdeel[]>) ?? {};
   if (!parsed[toestel]) {
-    parsed[toestel] = [...ONDERDELEN_PER_TOESTEL[toestel]];
+    parsed[toestel] = [];
     await db
       .update(schema.onderdelenCatalog)
       .set({ data: parsed })
@@ -202,10 +201,7 @@ export async function getOnderdelen(toestel: Toestel): Promise<TurnOnderdeel[]> 
     let next = o;
     if (o.elementgroep == null) {
       dirty = true;
-      const defaultEntry = ONDERDELEN_PER_TOESTEL[toestel].find(
-        (d) => d.naam === o.naam,
-      );
-      next = { ...next, elementgroep: defaultEntry?.elementgroep ?? 1 };
+      next = { ...next, elementgroep: 1 };
     }
     if (isSprongToestel(toestel) && sprongDWaardeMissing(next)) {
       dirty = true;
@@ -249,8 +245,7 @@ export async function addOnderdeel(
     .limit(1);
   const parsed =
     (rows[0]?.data as Record<string, TurnOnderdeel[]>) ?? {};
-  const existing =
-    parsed[toestel] ?? [...ONDERDELEN_PER_TOESTEL[toestel]];
+  const existing = parsed[toestel] ?? [];
   if (!existing.some((o) => o.naam === onderdeel.naam)) {
     parsed[toestel] = [...existing, onderdeel];
     await db

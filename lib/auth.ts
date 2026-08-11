@@ -7,7 +7,6 @@ const TRAINER_SESSION_KEY = "trainer_session_v1";
 export const TRAINER_ACCOUNTS = [
   { id: "trainer:arvid", name: "Arvid" },
   { id: "trainer:luca", name: "Luca" },
-  { id: "trainer:sem", name: "Sem" },
   { id: "trainer:yannick", name: "Yannick" },
 ] as const;
 

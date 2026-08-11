@@ -20,7 +20,7 @@ import { getSporters, toggleFavoriet, NIVEAUS, type Sporter } from "@/lib/storag
 type FilterMode = "favorieten" | "alle";
 
 export default function HomeScreen() {
-  const { session, logout } = useAuth();
+  const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const [sporters, setSporters] = useState<Sporter[]>([]);
   const [filter, setFilter] = useState<FilterMode>("alle");
@@ -55,11 +55,6 @@ export default function HomeScreen() {
   const openAgenda = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setAgendaOpen(true);
-  };
-
-  const handleSwitchTrainer = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await logout();
   };
 
   const filtered = useMemo(() => {
@@ -138,20 +133,7 @@ export default function HomeScreen() {
         <View style={styles.headerTitleBlock}>
           <Text style={styles.headerTitle}>Turnteam</Text>
           {!!session?.trainerName && (
-            <View style={styles.trainerRow}>
-              <Text style={styles.headerSubtitle}>Trainer: {session.trainerName}</Text>
-              <Pressable
-                onPress={() => void handleSwitchTrainer()}
-                hitSlop={8}
-                testID="switch-trainer-btn"
-                style={({ pressed }) => [
-                  styles.switchTrainerBtn,
-                  pressed && styles.switchTrainerBtnPressed,
-                ]}
-              >
-                <Text style={styles.switchTrainerBtnText}>TEST: wissel</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.headerSubtitle}>Trainer: {session.trainerName}</Text>
           )}
         </View>
         <View style={styles.headerActions}>
@@ -324,28 +306,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Inter_400Regular",
     color: Colors.textTertiary,
-  },
-  trainerRow: {
-    marginTop: 2,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  switchTrainerBtn: {
-    backgroundColor: Colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: Colors.borderLight,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  switchTrainerBtnPressed: {
-    opacity: 0.8,
-  },
-  switchTrainerBtnText: {
-    fontSize: 11,
-    fontFamily: "Inter_600SemiBold",
-    color: Colors.textSecondary,
   },
   headerActions: {
     flexDirection: "row",

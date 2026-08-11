@@ -72,92 +72,13 @@ export function sprongDWaardeMissing(onderdeel: TurnOnderdeel): boolean {
   return onderdeel.dWaarde == null || Number.isNaN(onderdeel.dWaarde);
 }
 
-function sprongOnderdeel(
-  naam: string,
-): TurnOnderdeel {
-  return {
-    naam,
-    niveau: "tA",
-    elementgroep: 1,
-    dWaarde: sprongDefaultDWaardeForNaam(naam),
-  };
-}
-
 export const ONDERDELEN_PER_TOESTEL: Record<Toestel, TurnOnderdeel[]> = {
-  Vloer: [
-    { naam: "Koprol voorwaarts", niveau: "tA", elementgroep: 1 },
-    { naam: "Koprol achterwaarts", niveau: "tA", elementgroep: 1 },
-    { naam: "Handstand", niveau: "tA", elementgroep: 2 },
-    { naam: "Rad", niveau: "A", elementgroep: 1 },
-    { naam: "Radslag", niveau: "A", elementgroep: 1 },
-    { naam: "Rondat", niveau: "A", elementgroep: 1 },
-    { naam: "Overslag", niveau: "B", elementgroep: 2 },
-    { naam: "Flikflak", niveau: "B", elementgroep: 1 },
-    { naam: "Arabier", niveau: "C", elementgroep: 1 },
-    { naam: "Salto voorwaarts", niveau: "C", elementgroep: 1 },
-    { naam: "Salto achterwaarts", niveau: "D", elementgroep: 1 },
-    { naam: "Schroef", niveau: "E", elementgroep: 1 },
-  ],
-  Voltige: [
-    { naam: "Opsprong", niveau: "tA", elementgroep: 1 },
-    { naam: "Afsprong", niveau: "tA", elementgroep: 4 },
-    { naam: "Hurksprong", niveau: "A", elementgroep: 1 },
-    { naam: "Streeksprong", niveau: "A", elementgroep: 1 },
-    { naam: "Gratssprong", niveau: "B", elementgroep: 2 },
-    { naam: "Handspring", niveau: "B", elementgroep: 1 },
-    { naam: "Overslag", niveau: "C", elementgroep: 1 },
-    { naam: "Yamashita", niveau: "C", elementgroep: 2 },
-    { naam: "Tsukahara", niveau: "D", elementgroep: 3 },
-    { naam: "Salto voorwaarts", niveau: "E", elementgroep: 4 },
-  ],
-  Ringen: [
-    { naam: "Hang", niveau: "tA", elementgroep: 1 },
-    { naam: "Steun", niveau: "tA", elementgroep: 2 },
-    { naam: "Schommel", niveau: "A", elementgroep: 1 },
-    { naam: "Hoek", niveau: "A", elementgroep: 2 },
-    { naam: "Spierbal", niveau: "B", elementgroep: 2 },
-    { naam: "Kipstand", niveau: "B", elementgroep: 3 },
-    { naam: "Steunzwaaien", niveau: "C", elementgroep: 1 },
-    { naam: "Kruis", niveau: "C", elementgroep: 2 },
-    { naam: "Hefwenteling", niveau: "D", elementgroep: 3 },
-    { naam: "Afzwaai", niveau: "E", elementgroep: 4 },
-  ],
-  Sprong: [
-    sprongOnderdeel("Hurksprong"),
-    sprongOnderdeel("Streeksprong"),
-    sprongOnderdeel("Gratssprong"),
-    sprongOnderdeel("Handspring"),
-    sprongOnderdeel("Overslag"),
-    sprongOnderdeel("Yamashita"),
-    sprongOnderdeel("Tsukahara"),
-    sprongOnderdeel("Salto voorwaarts"),
-    sprongOnderdeel("Schroefsprong"),
-    sprongOnderdeel("Rondat afsprong"),
-  ],
-  Brug: [
-    { naam: "Steunzwaaien", niveau: "tA", elementgroep: 1 },
-    { naam: "Wende", niveau: "tA", elementgroep: 2 },
-    { naam: "Kehre", niveau: "A", elementgroep: 2 },
-    { naam: "Draai", niveau: "A", elementgroep: 2 },
-    { naam: "Kiep", niveau: "B", elementgroep: 3 },
-    { naam: "Kip", niveau: "B", elementgroep: 3 },
-    { naam: "Felg", niveau: "C", elementgroep: 3 },
-    { naam: "Hefwenteling", niveau: "C", elementgroep: 3 },
-    { naam: "Diamidov", niveau: "D", elementgroep: 2 },
-    { naam: "Afzwaai", niveau: "E", elementgroep: 4 },
-  ],
-  Rekstok: [
-    { naam: "Zweefhang", niveau: "tA", elementgroep: 1 },
-    { naam: "Steunzwaaien", niveau: "tA", elementgroep: 1 },
-    { naam: "Kiep", niveau: "A", elementgroep: 3 },
-    { naam: "Felg", niveau: "A", elementgroep: 3 },
-    { naam: "Reuzendraaien", niveau: "B", elementgroep: 1 },
-    { naam: "Staldergrep", niveau: "C", elementgroep: 1 },
-    { naam: "Adlerslag", niveau: "C", elementgroep: 1 },
-    { naam: "Tkatchev", niveau: "D", elementgroep: 1 },
-    { naam: "Afsprong salto", niveau: "D", elementgroep: 4 },
-    { naam: "Afsprong schroef", niveau: "E", elementgroep: 4 },
-  ],
+  Vloer: [],
+  Voltige: [],
+  Ringen: [],
+  Sprong: [],
+  Brug: [],
+  Rekstok: [],
 };
 
 export const NIVEAU_MINIMUM: Record<string, number> = {
@@ -176,10 +97,8 @@ export const NIVEAU_MINIMUM: Record<string, number> = {
   Junior: 7,
 };
 
-export function getMinimumForNiveau(niveau: string, toestel: Toestel): number {
-  const totalOnderdelen = ONDERDELEN_PER_TOESTEL[toestel].length;
-  const niveauMin = NIVEAU_MINIMUM[niveau] || 2;
-  return Math.min(niveauMin, totalOnderdelen);
+export function getMinimumForNiveau(niveau: string, _toestel?: Toestel): number {
+  return NIVEAU_MINIMUM[niveau] || 2;
 }
 
 const NIVEAU_ORDER: Record<string, number> = {

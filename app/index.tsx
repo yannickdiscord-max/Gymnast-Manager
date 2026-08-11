@@ -158,6 +158,18 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/ideeen");
+            }}
+            hitSlop={12}
+            testID="ideeen-btn"
+            accessibilityRole="button"
+            accessibilityLabel="Ideeën generator"
+          >
+            <Ionicons name="bulb-outline" size={26} color={Colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push("/training-attendance");
             }}
             hitSlop={12}

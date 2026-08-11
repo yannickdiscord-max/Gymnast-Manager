@@ -3,6 +3,7 @@ import { Router } from "express";
 import * as svc from "./turnteam-service";
 import type {
   AgendaKalenderCategorie,
+  IdeeCategorie,
   OuderGesprekType,
   Toestel,
 } from "../shared/turnteam-domain";
@@ -12,6 +13,8 @@ import {
   NO_TRAINING_SESSIONS_TO_ARCHIVE,
   DUPLICATE_WEDSTRIJD_ERROR,
   INVALID_AGENDA_DATUM,
+  INVALID_AGENDA_EINDDATUM,
+  INVALID_AGENDA_PERIODE,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
   INVALID_TRAINING_SESSION_DATUM,
@@ -19,6 +22,10 @@ import {
   LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
+  MISSING_IDEE_NAAM,
+  MISSING_IDEE_UITLEG,
+  INVALID_IDEE_CATEGORIE,
+  IDEE_NOT_FOUND,
 } from "../shared/turnteam-domain";
 
 function asyncHandler(
@@ -442,6 +449,67 @@ export function registerTurnteamRoutes(app: Express): void {
   );
 
   api.get(
+    "/ideeen",
+    asyncHandler(async (req, res) => {
+      const raw = req.query.categorie;
+      const catRaw =
+        typeof raw === "string"
+          ? raw
+          : Array.isArray(raw)
+            ? String(raw[0] ?? "")
+            : "";
+      try {
+        res.json(await svc.getIdeeen(catRaw.trim() || undefined));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === INVALID_IDEE_CATEGORIE) {
+          res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
+    }),
+  );
+
+  api.post(
+    "/ideeen",
+    asyncHandler(async (req, res) => {
+      try {
+        res.json(
+          await svc.addIdee(
+            String(req.body?.naam ?? ""),
+            String(req.body?.uitleg ?? ""),
+            req.body?.categorie as IdeeCategorie,
+          ),
+        );
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (
+          msg === MISSING_IDEE_NAAM ||
+          msg === MISSING_IDEE_UITLEG ||
+          msg === INVALID_IDEE_CATEGORIE
+        ) {
+          res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
+    }),
+  );
+
+  api.delete(
+    "/ideeen/:id",
+    asyncHandler(async (req, res) => {
+      const ok = await svc.deleteIdee(pid(req, "id"));
+      if (!ok) {
+        res.status(404).json({ message: IDEE_NOT_FOUND });
+        return;
+      }
+      res.status(204).end();
+    }),
+  );
+
+  api.get(
     "/ouder-gesprekken/last-pop-label/:sporterId",
     asyncHandler(async (req, res) => {
       res.json({
@@ -701,6 +769,11 @@ export function registerTurnteamRoutes(app: Express): void {
               lesplanVisibility,
               ownerUserId:
                 ownerUserId === undefined ? undefined : ownerUserId,
+              einddatum:
+                req.body?.einddatum === undefined ||
+                req.body?.einddatum === null
+                  ? undefined
+                  : String(req.body.einddatum),
             },
           ),
         );
@@ -709,7 +782,9 @@ export function registerTurnteamRoutes(app: Express): void {
         if (
           msg === MISSING_AGENDA_TITEL ||
           msg === MISSING_AGENDA_LESPLAN_PLAN ||
-          msg === INVALID_AGENDA_DATUM
+          msg === INVALID_AGENDA_DATUM ||
+          msg === INVALID_AGENDA_EINDDATUM ||
+          msg === INVALID_AGENDA_PERIODE
         ) {
           res.status(400).json({ message: msg });
           return;
@@ -752,6 +827,37 @@ export function registerTurnteamRoutes(app: Express): void {
         }
         if (msg === MISSING_AGENDA_LESPLAN_PLAN || msg === INVALID_AGENDA_DATUM) {
           res.status(400).json({ message: msg });
+          return;
+        }
+        throw e;
+      }
+    }),
+  );
+
+  api.delete(
+    "/agenda/custom-events/:id",
+    asyncHandler(async (req, res) => {
+      const actorRaw = req.query.viewerUserId;
+      const actor =
+        typeof actorRaw === "string"
+          ? actorRaw.trim()
+          : Array.isArray(actorRaw)
+            ? String(actorRaw[0] ?? "").trim()
+            : "";
+      try {
+        const ok = await svc.deleteCustomAgendaEventById(
+          pid(req, "id"),
+          actor || undefined,
+        );
+        if (!ok) {
+          res.status(404).json({ message: "Not found" });
+          return;
+        }
+        res.status(204).end();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === LESPLAN_ACTION_FORBIDDEN) {
+          res.status(403).json({ message: msg });
           return;
         }
         throw e;

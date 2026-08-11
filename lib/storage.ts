@@ -6,6 +6,8 @@ export type {
   AgendaKalenderCategorie,
   AgendaWedstrijdItem,
   CustomAgendaEvent,
+  Idee,
+  IdeeCategorie,
   LesplanVisibility,
   Elementgroep,
   OuderGesprek,
@@ -24,6 +26,8 @@ import type {
   AgendaKalenderCategorie,
   AgendaItem,
   CustomAgendaEvent,
+  Idee,
+  IdeeCategorie,
   LesplanVisibility,
   OuderGesprek,
   OuderGesprekType,
@@ -44,7 +48,13 @@ export {
   DWAARDE_PER_NIVEAU,
   ELEMENTGROEP_ROMAN,
   ELEMENTGROEPEN,
+  IDEE_CATEGORIE_LABELS,
+  IDEE_CATEGORIEEN,
+  IDEE_NOT_FOUND,
   INVALID_AGENDA_DATUM,
+  INVALID_AGENDA_EINDDATUM,
+  INVALID_AGENDA_PERIODE,
+  INVALID_IDEE_CATEGORIE,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
   INVALID_SPRONG_DWAARDE,
@@ -55,6 +65,8 @@ export {
   LESPLAN_ACTION_FORBIDDEN,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
+  MISSING_IDEE_NAAM,
+  MISSING_IDEE_UITLEG,
   NIVEAU_MINIMUM,
   NIVEAUS,
   ONDERDELEN_PER_TOESTEL,
@@ -78,6 +90,7 @@ export {
 export {
   calculateNiveauFromGeboortedatum,
   calculateTurnSeasonAgeFromGeboortedatum,
+  formatAgendaDatumWeergave,
 } from "../shared/turnteam-dates";
 
 export type { OuderGesprekType } from "../shared/turnteam-domain";
@@ -378,6 +391,30 @@ export async function deleteOuderGesprek(id: string): Promise<void> {
   });
 }
 
+export async function getIdeeen(categorie?: IdeeCategorie): Promise<Idee[]> {
+  const params = new URLSearchParams();
+  if (categorie) params.set("categorie", categorie);
+  const qs = params.toString();
+  return apiFetch(`/api/ideeen${qs ? `?${qs}` : ""}`);
+}
+
+export async function addIdee(
+  naam: string,
+  uitleg: string,
+  categorie: IdeeCategorie,
+): Promise<Idee> {
+  return apiFetch("/api/ideeen", {
+    method: "POST",
+    body: JSON.stringify({ naam, uitleg, categorie }),
+  });
+}
+
+export async function deleteIdee(id: string): Promise<void> {
+  await apiFetch(`/api/ideeen/${encodeURIComponent(id.trim())}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getLastWedstrijdFromOtherSporters(
   sporterId: string,
 ): Promise<Wedstrijd | undefined> {
@@ -418,6 +455,7 @@ export async function addCustomAgendaEvent(
   options?: {
     lesplanVisibility?: LesplanVisibility;
     ownerUserId?: string | null;
+    einddatum?: string;
   },
 ): Promise<CustomAgendaEvent> {
   return apiFetch("/api/agenda/custom-events", {
@@ -430,6 +468,7 @@ export async function addCustomAgendaEvent(
       notitie,
       lesplanVisibility: options?.lesplanVisibility,
       ownerUserId: options?.ownerUserId,
+      einddatum: options?.einddatum,
     }),
   });
 }
@@ -454,12 +493,22 @@ export async function updateLesplan(
   });
 }
 
-export async function deleteLesplan(id: string, viewerUserId: string): Promise<void> {
-  const params = new URLSearchParams({ viewerUserId });
+export async function deleteCustomAgendaEvent(
+  id: string,
+  options?: { viewerUserId?: string },
+): Promise<void> {
+  const params = new URLSearchParams();
+  const v = options?.viewerUserId?.trim();
+  if (v) params.set("viewerUserId", v);
+  const qs = params.toString();
   await apiFetch(
-    `/api/agenda/lesplan/${encodeURIComponent(id.trim())}?${params.toString()}`,
+    `/api/agenda/custom-events/${encodeURIComponent(id.trim())}${qs ? `?${qs}` : ""}`,
     { method: "DELETE" },
   );
+}
+
+export async function deleteLesplan(id: string, viewerUserId: string): Promise<void> {
+  await deleteCustomAgendaEvent(id, { viewerUserId });
 }
 
 export async function addWedstrijd(

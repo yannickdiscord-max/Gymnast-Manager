@@ -28,15 +28,18 @@ import {
   addCustomAgendaEvent,
   addOuderGesprek,
   updateLesplan,
-  deleteLesplan,
+  deleteCustomAgendaEvent,
   AGENDA_CATEGORIE_LABELS,
   DUPLICATE_WEDSTRIJD_ERROR,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
   INVALID_AGENDA_DATUM,
+  INVALID_AGENDA_EINDDATUM,
+  INVALID_AGENDA_PERIODE,
   INVALID_OUDER_GESPREK_DATUM,
   LESPLAN_ACTION_FORBIDDEN,
   NIVEAUS,
+  formatAgendaDatumWeergave,
   type AgendaItem,
   type AgendaItemKalender,
   type AgendaKalenderCategorie,
@@ -52,6 +55,7 @@ function toAgendaKalenderFromSaved(ev: CustomAgendaEvent): AgendaItemKalender {
     id: ev.id,
     titel: ev.titel,
     datum: ev.datum,
+    einddatum: ev.einddatum,
     locatie: ev.locatie,
     categorie: cat,
     notitie: ev.notitie,
@@ -111,6 +115,7 @@ export default function AgendaModal({
   const [addType, setAddType] = useState<AddEventType>("vrij");
   const [addTitel, setAddTitel] = useState("");
   const [addDatum, setAddDatum] = useState("");
+  const [addEinddatum, setAddEinddatum] = useState("");
   const [addLocatie, setAddLocatie] = useState("");
   const [addNotitie, setAddNotitie] = useState("");
   const [addSporterId, setAddSporterId] = useState("");
@@ -125,6 +130,8 @@ export default function AgendaModal({
   const [addLesplanPublic, setAddLesplanPublic] = useState(true);
   /** Inline lesplan detail in this sheet (no system Alert). */
   const [lesplanDetail, setLesplanDetail] = useState<AgendaItemKalender | null>(null);
+  /** Inline vrij/overig detail with delete option. */
+  const [kalenderDetail, setKalenderDetail] = useState<AgendaItemKalender | null>(null);
   const [lesplanEditMode, setLesplanEditMode] = useState(false);
   const [lesplanEditDatum, setLesplanEditDatum] = useState("");
   const [lesplanEditNotitie, setLesplanEditNotitie] = useState("");
@@ -157,6 +164,7 @@ export default function AgendaModal({
       setPhase("list");
       setAddError("");
       setLesplanDetail(null);
+      setKalenderDetail(null);
       setLesplanEditMode(false);
       setLesplanEditError("");
       setLesplanSaving(false);
@@ -174,6 +182,51 @@ export default function AgendaModal({
     () => [...sporters].sort(compareSportersByNiveauThenName),
     [sporters]
   );
+
+  const closeKalenderDetail = () => {
+    Haptics.selectionAsync();
+    setKalenderDetail(null);
+  };
+
+  const confirmDeleteKalender = () => {
+    if (!kalenderDetail) return;
+    Alert.alert(
+      `${kalenderDetail.categorieLabel} verwijderen?`,
+      "Weet je zeker dat je dit wilt verwijderen uit de agenda?",
+      [
+        { text: "Annuleren", style: "cancel" },
+        {
+          text: "Verwijderen",
+          style: "destructive",
+          onPress: () => void deleteKalenderConfirmed(),
+        },
+      ],
+    );
+  };
+
+  const deleteKalenderConfirmed = async () => {
+    if (!kalenderDetail) return;
+    try {
+      await deleteCustomAgendaEvent(kalenderDetail.id.trim(), {
+        viewerUserId: viewerUserId?.trim() || undefined,
+      });
+      closeKalenderDetail();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      try {
+        await load();
+      } catch {
+        /* verwijderd; alleen verversen mislukte */
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        Alert.alert("Fout", "Gebeurtenis niet gevonden.");
+      } else if (e instanceof ApiError) {
+        Alert.alert("Fout", e.message || "Verwijderen mislukt.");
+      } else {
+        Alert.alert("Fout", "Verwijderen mislukt.");
+      }
+    }
+  };
 
   const closeLesplanDetail = () => {
     Haptics.selectionAsync();
@@ -266,7 +319,9 @@ export default function AgendaModal({
   const deleteLesplanConfirmed = async () => {
     if (!lesplanDetail || !viewerUserId?.trim()) return;
     try {
-      await deleteLesplan(lesplanDetail.id.trim(), viewerUserId.trim());
+      await deleteCustomAgendaEvent(lesplanDetail.id.trim(), {
+        viewerUserId: viewerUserId.trim(),
+      });
       closeLesplanDetail();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       try {
@@ -298,11 +353,13 @@ export default function AgendaModal({
   const openAdd = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setLesplanDetail(null);
+    setKalenderDetail(null);
     setLesplanEditMode(false);
     setLesplanEditError("");
     setAddType("vrij");
     setAddTitel("");
     setAddDatum("");
+    setAddEinddatum("");
     setAddLocatie("");
     setAddNotitie("");
     setAddSporterId("");
@@ -471,7 +528,10 @@ export default function AgendaModal({
         addDatum,
         addLocatie,
         addType as AgendaKalenderCategorie,
-        addNotitie
+        addNotitie,
+        addType === "vrij" && addEinddatum.trim()
+          ? { einddatum: addEinddatum.trim() }
+          : undefined,
       );
       await load();
       setPhase("list");
@@ -482,6 +542,10 @@ export default function AgendaModal({
           setAddError("Vul een titel in.");
         } else if (e.message === INVALID_AGENDA_DATUM) {
           setAddError("Ongeldige datum. Gebruik DD-MM-JJJJ.");
+        } else if (e.message === INVALID_AGENDA_EINDDATUM) {
+          setAddError("Ongeldige einddatum. Gebruik DD-MM-JJJJ.");
+        } else if (e.message === INVALID_AGENDA_PERIODE) {
+          setAddError("Einddatum moet op of na de startdatum liggen.");
         } else {
           setAddError("Opslaan mislukt.");
         }
@@ -526,10 +590,7 @@ export default function AgendaModal({
 
   const showKalenderDetail = (item: AgendaItemKalender) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const lines: string[] = [item.categorieLabel, `Datum: ${item.datum}`];
-    if (item.locatie.trim()) lines.push(`Locatie: ${item.locatie}`);
-    if (item.notitie.trim()) lines.push(item.notitie);
-    Alert.alert(item.titel, lines.join("\n\n"));
+    setKalenderDetail(item);
   };
 
   const renderItem = ({ item }: { item: AgendaItem }) => {
@@ -643,7 +704,9 @@ export default function AgendaModal({
         </Text>
         <View style={styles.metaRow}>
           <Ionicons name="calendar-outline" size={14} color={Colors.textTertiary} />
-          <Text style={styles.metaText}>{item.datum}</Text>
+          <Text style={styles.metaText}>
+            {formatAgendaDatumWeergave(item.datum, item.einddatum)}
+          </Text>
         </View>
         {item.categorie === "lesplan" && item.lesplanVisibility === "private" && (
           <View style={styles.metaRow}>
@@ -868,6 +931,57 @@ export default function AgendaModal({
         </ScrollView>
       )}
     </>
+  ) : kalenderDetail ? (
+    <>
+      <View style={styles.sheetHeader}>
+        <Pressable onPress={closeKalenderDetail} hitSlop={12} testID="agenda-kalender-back">
+          <Ionicons name="chevron-back" size={26} color={Colors.primary} />
+        </Pressable>
+        <Text style={[styles.modalTitle, styles.addTitleCenter]} numberOfLines={1}>
+          {kalenderDetail.categorieLabel}
+        </Text>
+        <View style={styles.lesplanDetailHeaderActions}>
+          <Pressable
+            onPress={confirmDeleteKalender}
+            hitSlop={10}
+            testID="agenda-kalender-delete"
+            accessibilityRole="button"
+            accessibilityLabel="Verwijderen uit agenda"
+          >
+            <Ionicons name="trash-outline" size={22} color={Colors.error} />
+          </Pressable>
+          <Pressable onPress={onClose} hitSlop={12} testID="agenda-kalender-close">
+            <Ionicons name="close" size={26} color={Colors.textSecondary} />
+          </Pressable>
+        </View>
+      </View>
+      <ScrollView
+        style={styles.lesplanDetailScroll}
+        contentContainerStyle={styles.lesplanDetailContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
+        <Text style={styles.rowTitle}>{kalenderDetail.titel}</Text>
+        <View style={styles.metaRow}>
+          <Ionicons name="calendar-outline" size={16} color={Colors.textTertiary} />
+          <Text style={styles.metaText}>
+            {formatAgendaDatumWeergave(kalenderDetail.datum, kalenderDetail.einddatum)}
+          </Text>
+        </View>
+        {kalenderDetail.locatie.trim() !== "" && (
+          <View style={styles.metaRow}>
+            <Ionicons name="location-outline" size={16} color={Colors.textTertiary} />
+            <Text style={styles.metaText}>{kalenderDetail.locatie}</Text>
+          </View>
+        )}
+        {kalenderDetail.notitie.trim() !== "" && (
+          <>
+            <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Notitie</Text>
+            <Text style={styles.lesplanDetailPlan}>{kalenderDetail.notitie}</Text>
+          </>
+        )}
+      </ScrollView>
+    </>
   ) : phase === "list" ? (
       <>
         <View style={styles.sheetHeader}>
@@ -949,6 +1063,9 @@ export default function AgendaModal({
                   Haptics.selectionAsync();
                   setAddType(opt.value);
                   setAddError("");
+                  if (opt.value !== "vrij") {
+                    setAddEinddatum("");
+                  }
                   if (opt.value === "ouder_gesprek") {
                     setAgendaGesprekKind("normaal");
                   }
@@ -1324,6 +1441,27 @@ export default function AgendaModal({
                 testID="agenda-add-datum"
               />
 
+              {addType === "vrij" && (
+                <>
+                  <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>
+                    Einddatum (optioneel, DD-MM-JJJJ)
+                  </Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={addEinddatum}
+                    onChangeText={(t) => {
+                      setAddEinddatum(t);
+                      setAddError("");
+                    }}
+                    placeholder="bijv. 05-05-2026"
+                    placeholderTextColor={Colors.textTertiary}
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={10}
+                    testID="agenda-add-einddatum"
+                  />
+                </>
+              )}
+
               {(addType === "wedstrijd" ||
                 addType === "ouder_gesprek" ||
                 addType === "overig") && (
@@ -1380,6 +1518,7 @@ export default function AgendaModal({
     if (phase === "add") closeAdd();
     else if (lesplanEditMode) cancelLesplanEdit();
     else if (lesplanDetail) closeLesplanDetail();
+    else if (kalenderDetail) closeKalenderDetail();
     else onClose();
   };
 

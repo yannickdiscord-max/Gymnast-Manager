@@ -248,6 +248,22 @@ export interface OuderGesprek {
   notities: string;
 }
 
+export type IdeeCategorie = "spel" | "warming-up";
+
+export interface Idee {
+  id: string;
+  naam: string;
+  uitleg: string;
+  categorie: IdeeCategorie;
+}
+
+export const IDEE_CATEGORIE_LABELS: Record<IdeeCategorie, string> = {
+  spel: "Spel",
+  "warming-up": "Warming-up",
+};
+
+export const IDEE_CATEGORIEEN: IdeeCategorie[] = ["spel", "warming-up"];
+
 export interface ToestelScore {
   dScore: number;
   eScore: number;
@@ -277,6 +293,8 @@ export interface CustomAgendaEvent {
   id: string;
   titel: string;
   datum: string;
+  /** Only for `vrij`: optional end date (DD-MM-YYYY) for a free period. */
+  einddatum?: string;
   locatie: string;
   categorie: AgendaKalenderCategorie;
   notitie: string;
@@ -304,6 +322,7 @@ export type AgendaItemKalender = {
   id: string;
   titel: string;
   datum: string;
+  einddatum?: string;
   locatie: string;
   categorie: AgendaKalenderCategorie;
   notitie: string;
@@ -351,6 +370,8 @@ export const DUPLICATE_WEDSTRIJD_ERROR = "DUPLICATE_WEDSTRIJD_ERROR";
 export const MISSING_AGENDA_TITEL = "MISSING_AGENDA_TITEL";
 export const MISSING_AGENDA_LESPLAN_PLAN = "MISSING_AGENDA_LESPLAN_PLAN";
 export const INVALID_AGENDA_DATUM = "INVALID_AGENDA_DATUM";
+export const INVALID_AGENDA_EINDDATUM = "INVALID_AGENDA_EINDDATUM";
+export const INVALID_AGENDA_PERIODE = "INVALID_AGENDA_PERIODE";
 
 /** Editing or deleting a lesplan is not allowed for this trainer. */
 export const LESPLAN_ACTION_FORBIDDEN = "LESPLAN_ACTION_FORBIDDEN";
@@ -359,6 +380,10 @@ export const INVALID_OUDER_GESPREK_DATUM = "INVALID_OUDER_GESPREK_DATUM";
 export const INVALID_GEBOORTEDATUM = "INVALID_GEBOORTEDATUM";
 export const INVALID_SPRONG_DWAARDE = "INVALID_SPRONG_DWAARDE";
 export const INVALID_YOUTUBE_URL = "INVALID_YOUTUBE_URL";
+export const MISSING_IDEE_NAAM = "MISSING_IDEE_NAAM";
+export const MISSING_IDEE_UITLEG = "MISSING_IDEE_UITLEG";
+export const INVALID_IDEE_CATEGORIE = "INVALID_IDEE_CATEGORIE";
+export const IDEE_NOT_FOUND = "IDEE_NOT_FOUND";
 
 export const DWAARDE_PER_NIVEAU: Record<TurnOnderdeelNiveau, number> = {
   tA: 0.1,

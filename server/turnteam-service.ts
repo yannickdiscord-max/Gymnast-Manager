@@ -9,6 +9,8 @@ import {
   type CustomAgendaEvent,
   type OuderGesprek,
   type OuderGesprekType,
+  type Idee,
+  type IdeeCategorie,
   type Sporter,
   type SporterAttendanceArchive,
   type SporterBlessures,
@@ -22,6 +24,8 @@ import {
   TRAINING_SESSION_NOT_FOUND,
   NO_TRAINING_SESSIONS_TO_ARCHIVE,
   INVALID_AGENDA_DATUM,
+  INVALID_AGENDA_EINDDATUM,
+  INVALID_AGENDA_PERIODE,
   INVALID_OUDER_GESPREK_DATUM,
   INVALID_GEBOORTEDATUM,
   INVALID_SPRONG_DWAARDE,
@@ -29,6 +33,10 @@ import {
   normalizeYoutubeUrl,
   MISSING_AGENDA_LESPLAN_PLAN,
   MISSING_AGENDA_TITEL,
+  MISSING_IDEE_NAAM,
+  MISSING_IDEE_UITLEG,
+  INVALID_IDEE_CATEGORIE,
+  IDEE_NOT_FOUND,
   LESPLAN_ACTION_FORBIDDEN,
   type LesplanVisibility,
   ONDERDELEN_PER_TOESTEL,
@@ -48,6 +56,7 @@ import {
   getBirthdayAgendaWindowDays,
   isValidEuropeanDateString,
   normalizeEuropeanDate,
+  isAgendaVrijPeriodeUpcoming,
   normalizeOuderGesprekDatum,
   normalizeTrainingSessionDatum,
   defaultTurnSeasonLabel,
@@ -970,6 +979,70 @@ export async function deleteOuderGesprek(id: string): Promise<void> {
   await db.delete(schema.ouderGesprekken).where(eq(schema.ouderGesprekken.id, id));
 }
 
+function normalizeIdeeCategorie(raw: string): IdeeCategorie {
+  const key = String(raw ?? "").trim().toLowerCase();
+  if (key === "spel") return "spel";
+  if (key === "warming-up" || key === "warmingup" || key === "warming_up") {
+    return "warming-up";
+  }
+  throw new Error(INVALID_IDEE_CATEGORIE);
+}
+
+function rowToIdee(row: typeof schema.ideeen.$inferSelect): Idee {
+  return {
+    id: row.id,
+    naam: row.naam,
+    uitleg: row.uitleg,
+    categorie: normalizeIdeeCategorie(row.categorie),
+  };
+}
+
+export async function getIdeeen(categorie?: string): Promise<Idee[]> {
+  const rows = await db.select().from(schema.ideeen);
+  const list = rows.map(rowToIdee);
+  const filtered = categorie?.trim()
+    ? list.filter((i) => i.categorie === normalizeIdeeCategorie(categorie))
+    : list;
+  return filtered.sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+}
+
+export async function addIdee(
+  naam: string,
+  uitleg: string,
+  categorie: IdeeCategorie,
+): Promise<Idee> {
+  const cat = normalizeIdeeCategorie(String(categorie));
+  const trimmedNaam = naam.trim();
+  if (!trimmedNaam) throw new Error(MISSING_IDEE_NAAM);
+  const trimmedUitleg = uitleg.trim();
+  if (!trimmedUitleg) throw new Error(MISSING_IDEE_UITLEG);
+  const id = randomUUID();
+  const idee: Idee = {
+    id,
+    naam: trimmedNaam,
+    uitleg: trimmedUitleg,
+    categorie: cat,
+  };
+  await db.insert(schema.ideeen).values({
+    id: idee.id,
+    naam: idee.naam,
+    uitleg: idee.uitleg,
+    categorie: idee.categorie,
+  });
+  return idee;
+}
+
+export async function deleteIdee(id: string): Promise<boolean> {
+  const rows = await db
+    .select()
+    .from(schema.ideeen)
+    .where(eq(schema.ideeen.id, id))
+    .limit(1);
+  if (!rows[0]) return false;
+  await db.delete(schema.ideeen).where(eq(schema.ideeen.id, id));
+  return true;
+}
+
 function rowToWedstrijd(
   row: typeof schema.wedstrijden.$inferSelect,
 ): Wedstrijd {
@@ -1088,6 +1161,7 @@ async function getCustomAgendaEvents(): Promise<CustomAgendaEvent[]> {
       id: e.id,
       titel: e.titel,
       datum: e.datum,
+      einddatum: e.einddatum?.trim() || undefined,
       locatie: e.locatie,
       categorie,
       notitie: e.notitie,
@@ -1156,13 +1230,18 @@ export async function getUpcomingAgendaItems(options: {
   const viewer = options.viewerUserId?.trim();
   for (const c of customAll) {
     if (!shouldIncludeKalenderEventForViewer(c, viewer)) continue;
-    const ts = wedstrijdDatumToTimestamp(c.datum);
-    if (ts === null || ts < todayStart) continue;
+    const isUpcoming =
+      c.categorie === "vrij" && c.einddatum?.trim()
+        ? isAgendaVrijPeriodeUpcoming(c.datum, c.einddatum, todayStart)
+        : wedstrijdDatumToTimestamp(c.datum) !== null &&
+          wedstrijdDatumToTimestamp(c.datum)! >= todayStart;
+    if (!isUpcoming) continue;
     items.push({
       source: "kalender",
       id: c.id,
       titel: c.titel,
       datum: c.datum,
+      einddatum: c.einddatum,
       locatie: c.locatie,
       categorie: c.categorie,
       notitie: c.notitie,
@@ -1230,13 +1309,27 @@ export async function addCustomAgendaEvent(
   options?: {
     lesplanVisibility?: LesplanVisibility;
     ownerUserId?: string | null;
+    einddatum?: string;
   },
 ): Promise<CustomAgendaEvent> {
   const cat = normalizeAgendaKalenderCategorieFromDb(String(categorie));
   const trimmedNotitie = notitie.trim();
   const normalizedDatum = normalizeEuropeanDate(datum);
-  if (wedstrijdDatumToTimestamp(normalizedDatum) === null) {
+  const startTs = wedstrijdDatumToTimestamp(normalizedDatum);
+  if (startTs === null) {
     throw new Error(INVALID_AGENDA_DATUM);
+  }
+  let normalizedEinddatum = "";
+  const rawEind = options?.einddatum?.trim() ?? "";
+  if (cat === "vrij" && rawEind) {
+    normalizedEinddatum = normalizeEuropeanDate(rawEind);
+    const endTs = wedstrijdDatumToTimestamp(normalizedEinddatum);
+    if (endTs === null) {
+      throw new Error(INVALID_AGENDA_EINDDATUM);
+    }
+    if (endTs < startTs) {
+      throw new Error(INVALID_AGENDA_PERIODE);
+    }
   }
   if (cat === "lesplan") {
     if (!trimmedNotitie) {
@@ -1255,6 +1348,7 @@ export async function addCustomAgendaEvent(
     id,
     titel: trimmedTitel,
     datum: normalizedDatum,
+    einddatum: normalizedEinddatum || undefined,
     locatie: locatie.trim(),
     categorie: cat,
     notitie: trimmedNotitie,
@@ -1265,6 +1359,7 @@ export async function addCustomAgendaEvent(
     id,
     titel: ev.titel,
     datum: ev.datum,
+    einddatum: normalizedEinddatum,
     locatie: ev.locatie,
     categorie: ev.categorie,
     notitie: ev.notitie,
@@ -1338,9 +1433,9 @@ export async function updateLesplanById(
   };
 }
 
-export async function deleteLesplanById(
+export async function deleteCustomAgendaEventById(
   id: string,
-  actorUserId: string,
+  actorUserId?: string,
 ): Promise<boolean> {
   const rows = await db
     .select()
@@ -1354,14 +1449,21 @@ export async function deleteLesplanById(
     categorie === "lesplan" ||
     row.lesplanVisibility === "private" ||
     row.lesplanVisibility === "public";
-  if (!looksLesplan) return false;
-
-  assertLesplanActorAllowed(row.ownerUserId, actorUserId);
+  if (looksLesplan) {
+    assertLesplanActorAllowed(row.ownerUserId, actorUserId ?? "");
+  }
 
   await db
     .delete(schema.customAgendaEvents)
     .where(eq(schema.customAgendaEvents.id, id));
   return true;
+}
+
+export async function deleteLesplanById(
+  id: string,
+  actorUserId: string,
+): Promise<boolean> {
+  return deleteCustomAgendaEventById(id, actorUserId);
 }
 
 export async function addWedstrijd(
@@ -1662,6 +1764,7 @@ export async function importLegacyPayload(body: {
         id: c.id,
         titel: c.titel,
         datum: c.datum,
+        einddatum: c.einddatum?.trim() ?? "",
         locatie: c.locatie,
         categorie,
         notitie: c.notitie,

@@ -94,10 +94,19 @@ export const wedstrijden = pgTable("wedstrijden", {
   targetNiveaus: jsonb("target_niveaus"),
 });
 
+export const ideeen = pgTable("ideeen", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  naam: text("naam").notNull(),
+  uitleg: text("uitleg").notNull(),
+  categorie: varchar("categorie", { length: 32 }).notNull(),
+});
+
 export const customAgendaEvents = pgTable("custom_agenda_events", {
   id: varchar("id", { length: 64 }).primaryKey(),
   titel: text("titel").notNull(),
   datum: varchar("datum", { length: 16 }).notNull(),
+  /** Only for `vrij`: optional end date (DD-MM-YYYY) for a free period. */
+  einddatum: varchar("einddatum", { length: 16 }).notNull().default(""),
   locatie: text("locatie").notNull(),
   categorie: varchar("categorie", { length: 32 }).notNull(),
   notitie: text("notitie").notNull(),

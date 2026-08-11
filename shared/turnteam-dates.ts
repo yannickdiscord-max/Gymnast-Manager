@@ -1,5 +1,29 @@
 /** European DD-MM-YYYY helpers shared by client and server. */
 
+export function formatAgendaDatumWeergave(
+  datum: string,
+  einddatum?: string,
+): string {
+  const end = einddatum?.trim();
+  if (!end || end === datum.trim()) return datum;
+  return `${datum} t/m ${end}`;
+}
+
+/** True when a vrij/vakantie period is still active or in the future. */
+export function isAgendaVrijPeriodeUpcoming(
+  datum: string,
+  einddatum: string | undefined,
+  todayStart: number,
+): boolean {
+  const startTs = wedstrijdDatumToTimestamp(datum);
+  if (startTs === null) return false;
+  const end = einddatum?.trim();
+  if (!end) return startTs >= todayStart;
+  const endTs = wedstrijdDatumToTimestamp(normalizeEuropeanDate(end));
+  if (endTs === null) return startTs >= todayStart;
+  return endTs >= todayStart;
+}
+
 export function wedstrijdDatumToTimestamp(datum: string): number | null {
   const parts = datum.split("-");
   if (parts.length !== 3) return null;

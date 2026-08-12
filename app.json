@@ -16,10 +16,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.myapp"
+      "bundleIdentifier": "nl.dehazenkamp.turnteam"
     },
     "android": {
-      "package": "com.myapp",
+      "package": "nl.dehazenkamp.turnteam",
       "statusBar": {
         "backgroundColor": "#3A3A3A",
         "barStyle": "light-content"
@@ -51,6 +51,15 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "aa259d15-631e-4387-b8e1-3cfeb25ed3bc"
+      }
+    },
+    "owner": "turnteam"
   }
 }

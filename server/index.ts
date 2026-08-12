@@ -238,15 +238,8 @@ function setupErrorHandler(app: express.Application) {
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(
-    {
-      port,
-      // host: "192.168.1.16", // local ip address thuis op Herman Snostraat
-      //reusePort: true
-      host: "0.0.0.0" 
-    },
-    () => {
-      log(`express server serving on port ${port}`);
-    },
-  );
+  // Bind to all interfaces so Docker/Northflank can reach the process.
+  server.listen({ port, host: "0.0.0.0" }, () => {
+    log(`express server serving on port ${port}`);
+  });
 })();

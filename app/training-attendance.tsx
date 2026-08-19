@@ -20,6 +20,7 @@ import {
   getTrainingSessionForDatum,
   addTrainingSession,
   updateTrainingSessionAttendees,
+  deleteTrainingSession,
   DUPLICATE_TRAINING_SESSION_ERROR,
   INVALID_TRAINING_SESSION_DATUM,
   TRAINING_SESSION_NOT_FOUND,
@@ -44,6 +45,7 @@ export default function TrainingAttendanceScreen() {
   const [existingSessionId, setExistingSessionId] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const loadSessionRequestId = useRef(0);
 
   const webTopInset = 0;
@@ -116,7 +118,7 @@ export default function TrainingAttendanceScreen() {
   };
 
   const handleSave = async () => {
-    if (saving) return;
+    if (saving || deleting) return;
     setSaving(true);
     try {
       const attendees = Array.from(selected);
@@ -153,6 +155,50 @@ export default function TrainingAttendanceScreen() {
     }
   };
 
+  const handleDelete = () => {
+    if (!existingSessionId || deleting || saving || loadingSession) return;
+
+    const sessionId = existingSessionId;
+    const message = `Training op ${datum.trim()} verwijderen.\n\nDit verwijdert de training voor alle sporters en kan niet ongedaan worden gemaakt.`;
+
+    const runDelete = async () => {
+      setDeleting(true);
+      try {
+        await deleteTrainingSession(sessionId);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setExistingSessionId(null);
+        setSelected(new Set());
+      } catch (e) {
+        Alert.alert(
+          "Verwijderen mislukt",
+          e instanceof Error
+            ? e.message || "De training kon niet verwijderd worden."
+            : "De training kon niet verwijderd worden.",
+        );
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(`Training verwijderen?\n\n${message}`)) {
+        void runDelete();
+      }
+      return;
+    }
+
+    Alert.alert("Training verwijderen?", message, [
+      { text: "Annuleren", style: "cancel" },
+      {
+        text: "Verwijderen",
+        style: "destructive",
+        onPress: () => {
+          void runDelete();
+        },
+      },
+    ]);
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center, { paddingTop: insets.top + webTopInset }]}>
@@ -183,16 +229,39 @@ export default function TrainingAttendanceScreen() {
 
       <View style={styles.dateBlock}>
         <Text style={styles.fieldLabel}>Datum training (DD-MM-JJJJ)</Text>
-        <TextInput
-          style={styles.textInput}
-          value={datum}
-          onChangeText={setDatum}
-          placeholder="24-04-2026"
-          placeholderTextColor={Colors.textTertiary}
-          keyboardType="numbers-and-punctuation"
-          maxLength={10}
-          testID="training-datum-input"
-        />
+        <View style={styles.dateRow}>
+          <TextInput
+            style={[styles.textInput, styles.dateInput]}
+            value={datum}
+            onChangeText={setDatum}
+            placeholder="24-04-2026"
+            placeholderTextColor={Colors.textTertiary}
+            keyboardType="numbers-and-punctuation"
+            maxLength={10}
+            editable={!deleting}
+            testID="training-datum-input"
+          />
+          {isEditingExisting ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.deleteButton,
+                pressed && styles.deleteButtonPressed,
+                (deleting || saving || loadingSession) && styles.deleteButtonDisabled,
+              ]}
+              onPress={handleDelete}
+              disabled={deleting || saving || loadingSession}
+              hitSlop={8}
+              accessibilityLabel="Training verwijderen"
+              testID="delete-training-attendance-btn"
+            >
+              {deleting ? (
+                <ActivityIndicator size="small" color={Colors.error} />
+              ) : (
+                <Ionicons name="trash-outline" size={22} color={Colors.error} />
+              )}
+            </Pressable>
+          ) : null}
+        </View>
         {loadingSession ? (
           <View style={styles.sessionHintRow}>
             <ActivityIndicator size="small" color={Colors.primary} />
@@ -253,7 +322,7 @@ export default function TrainingAttendanceScreen() {
             saving && { opacity: 0.6 },
           ]}
           onPress={handleSave}
-          disabled={saving || sorted.length === 0 || loadingSession}
+          disabled={saving || deleting || sorted.length === 0 || loadingSession}
           testID="save-training-attendance-btn"
         >
           {saving ? (
@@ -319,6 +388,11 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 8,
   },
+  dateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
   textInput: {
     backgroundColor: Colors.surfaceSecondary,
     borderRadius: 12,
@@ -329,6 +403,25 @@ const styles = StyleSheet.create({
     color: Colors.text,
     borderWidth: 1,
     borderColor: Colors.borderLight,
+  },
+  dateInput: {
+    flex: 1,
+  },
+  deleteButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  deleteButtonPressed: {
+    opacity: 0.85,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.55,
   },
   sessionHintRow: {
     flexDirection: "row",

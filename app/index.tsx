@@ -225,6 +225,10 @@ export default function HomeScreen() {
             Favorieten
           </Text>
         </Pressable>
+
+        <Text style={styles.filterCount} testID="sporter-total-count">
+          {sporters.length}
+        </Text>
       </View>
 
       {loading ? (
@@ -314,6 +318,7 @@ const styles = StyleSheet.create({
   },
   filterRow: {
     flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 20,
     gap: 10,
     paddingBottom: 16,
@@ -337,6 +342,12 @@ const styles = StyleSheet.create({
   },
   filterTextActive: {
     color: Colors.white,
+  },
+  filterCount: {
+    marginLeft: "auto",
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+    color: Colors.textTertiary,
   },
   loadingContainer: {
     flex: 1,

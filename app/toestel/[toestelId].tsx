@@ -86,8 +86,8 @@ export default function ToestelScreen() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
   const toestel = toestelId as Toestel;
   const isSprong = isSprongToestel(toestel);
 

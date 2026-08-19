@@ -48,8 +48,8 @@ export default function WedstrijdScreen() {
   const [savingInfo, setSavingInfo] = useState(false);
   const [editErrorMsg, setEditErrorMsg] = useState("");
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
 
   useFocusEffect(
     useCallback(() => {

@@ -40,8 +40,8 @@ export default function SporterScreen() {
   const [loading, setLoading] = useState(true);
   const [showNiveauPicker, setShowNiveauPicker] = useState(false);
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
   const hasLoadedRef = useRef(false);
 
   useFocusEffect(

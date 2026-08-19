@@ -34,8 +34,8 @@ export default function AddSporterScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
 
   const geboortedatumValid = isValidEuropeanDateString(geboortedatum);
   const canSubmit =

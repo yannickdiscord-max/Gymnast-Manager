@@ -62,8 +62,8 @@ function isGesprekDatumInPast(datum: string): boolean {
 export default function PopGesprekkenScreen() {
   const { sporterId } = useLocalSearchParams<{ sporterId: string }>();
   const insets = useSafeAreaInsets();
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
 
   const [sporter, setSporter] = useState<Sporter | null>(null);
   const [gesprekken, setGesprekken] = useState<OuderGesprek[]>([]);

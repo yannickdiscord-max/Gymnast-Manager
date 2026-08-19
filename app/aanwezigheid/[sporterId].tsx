@@ -104,8 +104,8 @@ export default function AanwezigheidScreen() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
 
   const loadData = useCallback(async () => {
     if (!sporterId) return;

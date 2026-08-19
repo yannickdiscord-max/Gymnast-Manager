@@ -40,8 +40,8 @@ export default function AnalyseScreen() {
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
 
   useFocusEffect(
     useCallback(() => {

@@ -32,8 +32,8 @@ export default function OverigeZakenScreen() {
   > | null>(null);
   const [blessures, setBlessures] = useState<SporterBlessures>({ current: [], previous: [] });
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const webBottomInset = Platform.OS === "web" ? 34 : 0;
+  const webTopInset = 0;
+  const webBottomInset = 0;
 
   const loadAll = useCallback(async () => {
     if (!sporterId) return;

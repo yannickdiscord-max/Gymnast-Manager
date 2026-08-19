@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider, useAuth } from "@/components/AuthProvider";
 import TrainerLoginScreen from "@/components/TrainerLoginScreen";
@@ -61,13 +62,15 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <GestureHandlerRootView style={styles.root}>
-          <KeyboardProvider>
-            <RootLayoutNav />
-          </KeyboardProvider>
-        </GestureHandlerRootView>
-      </AuthProvider>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <GestureHandlerRootView style={styles.root}>
+            <KeyboardProvider>
+              <RootLayoutNav />
+            </KeyboardProvider>
+          </GestureHandlerRootView>
+        </AuthProvider>
+      </SafeAreaProvider>
     </ErrorBoundary>
   );
 }

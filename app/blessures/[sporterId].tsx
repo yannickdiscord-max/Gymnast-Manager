@@ -42,7 +42,7 @@ export default function BlessuresScreen() {
   const [previousZone, setPreviousZone] = useState<LayoutRectangle | null>(null);
   const currentZoneAnchorRef = useRef<View | null>(null);
   const previousZoneAnchorRef = useRef<View | null>(null);
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const webTopInset = 0;
 
   const loadData = useCallback(async () => {
     if (!sporterId) return;

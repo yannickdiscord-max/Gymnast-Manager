@@ -19,8 +19,13 @@ export default function TrainerLoginScreen() {
     setLoading(true);
     try {
       await login(selectedTrainer);
-    } catch {
-      setError("Inloggen mislukt. Kies een bestaand account.");
+    } catch (e) {
+      const detail = e instanceof Error && e.message ? e.message : "";
+      setError(
+        detail
+          ? `Inloggen mislukt: ${detail}`
+          : "Inloggen mislukt. Kies een bestaand account.",
+      );
     } finally {
       setLoading(false);
     }
